@@ -21,7 +21,7 @@ class AppointmentsControllerTest {
     void listReturnsCountAndItems() throws Exception {
         mvc.perform(get("/api/appointments"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.count").isNumber())
+                .andExpect(jsonPath("$.total").isNumber())
                 .andExpect(jsonPath("$.items[0].id").value(2317));
     }
 

@@ -35,14 +35,17 @@ public class AppointmentsController {
         filters.remove("offset");
 
         var page = new LinkedHashMap<String, Object>();
-        page.put("count", store.count(filters));
+        page.put("total", store.count(filters));
         page.put("items", store.list(filters, limit, offset).stream().map(AppointmentStore.Record::toJson).toList());
         return ResponseEntity.ok(page);
     }
 
     @PostMapping({"/api/appointments", "/api/appointments/"})
-    public ResponseEntity<Map<String, Object>> create(@RequestBody(required = false) Map<String, Object> payload) {
-        var record = store.create(payload == null ? Map.of() : payload);
+    public ResponseEntity<?> create(@RequestBody(required = false) Map<String, Object> payload) {
+        if (payload == null || payload.get("patient_id") == null) {
+            return error(HttpStatus.BAD_REQUEST, "patient_id is required");
+        }
+        var record = store.create(payload);
         return ResponseEntity.status(HttpStatus.CREATED).body(record.toJson());
     }
 
