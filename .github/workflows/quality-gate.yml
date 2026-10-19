@@ -1,0 +1,127 @@
+# Agent quality gate: build -> 5 gate steps (parallel) -> aggregate, comment, decide.
+# The gate runs in CI, outside the coding agent: the agent cannot skip it.
+# Make the "quality-gate" job a required check to block merges.
+name: quality-gate
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # Verified in docs/cli-inventory.md. Bump deliberately, then re-run the inventory.
+  POSTMAN_CLI_VERSION: 1.73.0
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      # Compile only: tests belong to the gate (step 3), not to the build.
+      - run: mvn -B -DskipTests package
+
+  gate:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { step: skills-check,  script: gate/01-skills-check.sh }
+          - { step: contract-lint, script: gate/02-contract-lint.sh }
+          - { step: tests,         script: gate/03-tests.sh }
+          - { step: ai-readiness,  script: gate/04-ai-readiness.sh }
+          - { step: impact,        script: gate/05-impact.sh }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # the impact step diffs the contract against the base branch
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Install the Postman CLI
+        run: npm install -g "postman-cli@${POSTMAN_CLI_VERSION}"
+      - name: Log in to Postman
+        # The key reaches the CLI through the environment only; it is masked in logs.
+        # Without the secret (fork PR) the steps that need the cloud report not_available.
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+        run: |
+          if [ -n "$POSTMAN_API_KEY" ]; then
+            postman login --with-api-key "$POSTMAN_API_KEY" > /dev/null
+          else
+            echo "POSTMAN_API_KEY is not set: cloud-backed steps will be not_available"
+          fi
+      - name: Run the gate step (it never fails the job, the aggregate job decides)
+        env:
+          POSTMAN_API_KEY: ${{ secrets.POSTMAN_API_KEY }}
+          GATE_BASE_REF: origin/${{ github.base_ref || github.event.repository.default_branch }}
+          IMPACT_API: ${{ vars.IMPACT_API }}
+        run: |
+          # An empty repository variable must fall back to the script default.
+          [ -z "$IMPACT_API" ] && unset IMPACT_API
+          ./${{ matrix.script }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: gate-${{ matrix.step }}
+          path: gate-results/${{ matrix.step }}.json
+          if-no-files-found: warn
+
+  quality-gate:
+    needs: gate
+    if: always() # decide even when a gate job crashed: a missing result counts as not_available
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # to post the report comment
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: gate-*
+          path: gate-results
+          merge-multiple: true
+      - name: Aggregate (score, rating, report, job summary)
+        run: node gate/aggregate.js --no-exit-code
+      - name: Post or update the PR comment
+        if: github.event_name == 'pull_request'
+        continue-on-error: true # fork PRs get a read-only token
+        uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('gate-results/report.md', 'utf8');
+            const marker = '<!-- agent-quality-gate -->';
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: gate-report
+          path: gate-results/report.*
+      - name: Fail the check when the gate fails
+        run: |
+          passed="$(node -p "require('./gate-results/report.json').passed")"
+          [ "$passed" = "true" ] || { echo "Quality gate failed"; exit 1; }
