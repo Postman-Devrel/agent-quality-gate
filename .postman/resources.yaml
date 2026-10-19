@@ -1,12 +1,12 @@
 cloudResources:
   collections:
-    ../postman/collections/Orders API: 56966635-19b07a22-9cd6-44a9-bad9-1055bfca2945
+    ../postman/collections/Appointments API: 56966635-d962f754-78b2-412c-b883-dff31b0d01bd
   mocks:
-    ../postman/mocks/orders-mock/config.yaml: 7017ff22-fa24-4c64-b4bd-fb46fabfdb7b
+    ../postman/mocks/appointments-mock/config.yaml: dba2f181-8eb0-41e1-9987-2bb03b761daf
   specs:
-    ../postman/specs/orders-api/index.yaml: a297eec3-ee6f-439c-b56f-b1ad42184978
+    ../postman/specs/appointments-api/index.yaml: a297eec3-ee6f-439c-b56f-b1ad42184978
 resourceNameMappings:
   specs:
-    - ../postman/specs/orders-api/index.yaml: index.yaml
+    - ../postman/specs/appointments-api/index.yaml: index.yaml
 workspace:
   id: 669d9cd9-0b52-4473-8068-148dbae07f6b
