@@ -1,3 +1,12 @@
+cloudResources:
+  collections:
+    ../postman/collections/Orders API: 56226622-d13858e1-6859-4480-aa9d-98d486665e82
+  mocks:
+    ../postman/mocks/orders-mock/config.yaml: 14d549c5-2aee-493c-bc74-6ee7a7481ebd
+  specs:
+    ../postman/specs/orders-api/index.yaml: 959797f1-6c8a-4957-b681-141d66c85890
+resourceNameMappings:
+  specs:
+    - ../postman/specs/orders-api/index.yaml: index.yaml
 workspace:
   id: 2e8dbc70-159f-41f6-9ecd-13c0c1959f17
-  name: avdev4j/agent-quality-gate
