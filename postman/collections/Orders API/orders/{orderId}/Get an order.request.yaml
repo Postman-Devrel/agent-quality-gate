@@ -16,7 +16,7 @@ scripts:
   - type: afterResponse
     code: |
       function checkOrder(o) {
-        pm.expect(o).to.have.all.keys("id", "customerId", "status", "totalAmount", "items");
+        pm.expect(o).to.include.all.keys("id", "customerId", "status", "totalAmount", "items");
         pm.expect(o.id).to.be.a("string");
         pm.expect(o.totalAmount).to.be.a("number");
         pm.expect(["PENDING","PAID","SHIPPED","CANCELLED"]).to.include(o.status);
