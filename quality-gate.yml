@@ -1,0 +1,29 @@
+# Quality gate configuration (read by gate/aggregate.js).
+# Keep this file flat and simple: the aggregator ships its own tiny parser,
+# so only "key: value" pairs nested by two spaces are supported.
+
+# Weight of each step in the composite score. Steps that are not_available
+# are left out and the remaining weights are re-normalized.
+weights:
+  skills-check: 10
+  contract-lint: 25
+  tests: 25
+  ai-readiness: 20
+  impact: 20
+
+# Minimum score for each rating (anything below "D" is an "E").
+rating:
+  A: 90
+  B: 80
+  C: 70
+  D: 50
+
+# The gate passes at this rating or better...
+pass_rating: B
+
+# ...unless a hard blocker is hit, whatever the score:
+#   lint errors, failing tests, a breaking impact on a consumer.
+blockers:
+  lint_error: true
+  failing_test: true
+  breaking_impact: true
