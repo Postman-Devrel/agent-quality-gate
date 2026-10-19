@@ -37,7 +37,7 @@ failed="$(awk '/^  tests:/{f=1} f&&/failed:/{print $2; exit}' "$summary_file")"
 req_errors="$(awk '/^  executedRequests:/{f=1} f&&/errors:/{print $2; exit}' "$summary_file")"
 executed="${executed:-0}"; failed="${failed:-0}"; req_errors="${req_errors:-0}"
 add_detail postman-collection "$executed assertion(s), $failed failed, $req_errors request error(s)"
-grep -E '^\s+[0-9]+\.' "$work/run.log" | head -10 | while IFS= read -r line; do add_detail failure "$(echo "$line" | sed 's/^ *//')"; done
+grep -E 'AssertionError' "$work/run.log" | sed -E 's/^ *[0-9]+\. +//; s/ +$//' | head -10 | while IFS= read -r line; do add_detail failure "$line"; done
 
 # Score: half for JUnit, half for the share of passing Postman assertions.
 if [ "$executed" -gt 0 ]; then pm_part=$(( 50 * (executed - failed) / executed )); else pm_part=0; fi
