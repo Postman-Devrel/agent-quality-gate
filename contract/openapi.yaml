@@ -645,6 +645,8 @@ components:
         Free-form appointment payload. The listed properties are the ones the
         service or its downstream consumers act on; any other key is stored as-is
         on the record. An `id` key is discarded.
+      required:
+        - patient_id
       properties:
         patient_id:
           type: integer
@@ -697,10 +699,10 @@ components:
     AppointmentPage:
       type: object
       required:
-        - count
+        - total
         - items
       properties:
-        count:
+        total:
           type: integer
           format: int64
           description: |
