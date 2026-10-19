@@ -2,3 +2,4 @@ target/
 gate-results/
 node_modules/
 .DS_Store
+gate-results.mvn.log
