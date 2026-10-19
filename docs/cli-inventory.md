@@ -19,7 +19,8 @@ Nothing here is guessed. "Verified" means the command was executed; "Docs" cross
 `postman skills status` compares the skills **committed in `postman/skills/`** against the published ones. It does **not** check the Claude Code plugin version.
 The plugin is updated with `claude plugin update postman` (named in the CLI help), which cannot run in CI.
 - Gate design: score the repo skills with `skills status` (verified); report the plugin version as informational only.
-- Local state: in this repo `postman/skills/*` contains empty directories (the first `postman init` run exited 5 before writing files) and `skills status` answers `foreign`, exit 1. Fix before step 4: run `postman skills update` once and commit.
+- **Blocker found while writing the script:** on a pristine `git init && postman init` repo (CLI 1.73.0 and 1.75.0), `postman skills status` answers `foreign` (exit 1) and `postman skills update` refuses with exit 4, as if the 45 skill files that `init` just wrote were "source files". It only reports `behind/missing` when the skills folder holds no files, or when given `postman/skills` as the path. Looks like a CLI bug; not worked around.
+- Gate design: `01-skills-check.sh` maps `current` to pass, `behind`/`modified`/`unknown` to warn, and anything else (including `foreign`) to `not_available`. **Today it reports `not_available` in this repo.**
 - `postman skills update` exits 4 when a skill file was edited locally (needs `--force`).
 
 ### 2. Contract lint — works
