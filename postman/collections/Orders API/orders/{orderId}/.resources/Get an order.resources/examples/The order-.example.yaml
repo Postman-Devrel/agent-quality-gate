@@ -1,0 +1,37 @@
+$kind: http-example
+name: The order.
+request:
+  url: "{{baseUrl}}/orders/:orderId"
+  method: GET
+  headers:
+    Accept: application/json
+  pathVariables:
+    - key: orderId
+      value: ord_1001
+      disabled: false
+      description: (Required) Order identifier.
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "id": "ord_1001",
+        "customerId": "cus_42",
+        "status": "PENDING",
+        "totalAmount": 59.9,
+        "items": [
+          {
+            "sku": "SKU-1",
+            "quantity": 2,
+            "unitPrice": 29.95
+          }
+        ]
+      }
+order: 1000

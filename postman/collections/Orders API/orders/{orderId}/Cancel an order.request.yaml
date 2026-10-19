@@ -1,0 +1,26 @@
+$kind: http-request
+description: Cancels an order that has not shipped yet. Returns the cancelled order.
+url: '{{baseUrl}}/orders/:orderId'
+method: DELETE
+headers:
+  Accept: application/json
+pathVariables:
+  - key: orderId
+    value: ord_1003
+    disabled: false
+    description: (Required) Order identifier.
+settings: {}
+examples: ./.resources/Cancel an order.resources/examples
+order: 2000
+scripts:
+  - type: afterResponse
+    code: |
+      function checkOrder(o) {
+        pm.expect(o).to.have.all.keys("id", "customerId", "status", "totalAmount", "items");
+        pm.expect(o.id).to.be.a("string");
+        pm.expect(o.totalAmount).to.be.a("number");
+        pm.expect(["PENDING","PAID","SHIPPED","CANCELLED"]).to.include(o.status);
+        pm.expect(o.items).to.be.an("array");
+      }
+      pm.test("200 and a cancelled order contract", () => { pm.response.to.have.status(200); checkOrder(pm.response.json()); });
+    language: text/javascript

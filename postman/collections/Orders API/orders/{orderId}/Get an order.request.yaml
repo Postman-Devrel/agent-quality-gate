@@ -1,0 +1,26 @@
+$kind: http-request
+description: Returns a single order by id.
+url: '{{baseUrl}}/orders/:orderId'
+method: GET
+headers:
+  Accept: application/json
+pathVariables:
+  - key: orderId
+    value: ord_1001
+    disabled: false
+    description: (Required) Order identifier.
+settings: {}
+examples: ./.resources/Get an order.resources/examples
+order: 1000
+scripts:
+  - type: afterResponse
+    code: |
+      function checkOrder(o) {
+        pm.expect(o).to.have.all.keys("id", "customerId", "status", "totalAmount", "items");
+        pm.expect(o.id).to.be.a("string");
+        pm.expect(o.totalAmount).to.be.a("number");
+        pm.expect(["PENDING","PAID","SHIPPED","CANCELLED"]).to.include(o.status);
+        pm.expect(o.items).to.be.an("array");
+      }
+      pm.test("200 and the order contract", () => { pm.response.to.have.status(200); checkOrder(pm.response.json()); });
+    language: text/javascript

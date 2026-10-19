@@ -1,0 +1,4 @@
+$kind: collection
+description: Minimal Orders API used as the subject of the agent quality gate demo.
+variables:
+  baseUrl: http://localhost:8080

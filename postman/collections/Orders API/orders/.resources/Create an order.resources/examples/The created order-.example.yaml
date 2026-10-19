@@ -1,0 +1,42 @@
+$kind: http-example
+name: The created order.
+request:
+  url: "{{baseUrl}}/orders"
+  method: POST
+  headers:
+    Accept: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "customerId": "cus_42",
+        "items": [
+          {
+            "sku": "SKU-1",
+            "quantity": 2,
+            "unitPrice": 29.95
+          }
+        ]
+      }
+response:
+  statusCode: 201
+  statusText: Created
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "id": "ord_1001",
+        "customerId": "cus_42",
+        "status": "PENDING",
+        "totalAmount": 59.9,
+        "items": [
+          {
+            "sku": "SKU-1",
+            "quantity": 2,
+            "unitPrice": 29.95
+          }
+        ]
+      }
+order: 1000

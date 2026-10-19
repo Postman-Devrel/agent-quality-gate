@@ -1,0 +1,35 @@
+$kind: http-request
+description: Creates a new order in the PENDING status.
+url: '{{baseUrl}}/orders'
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: json
+  content: |-
+    {
+      "customerId": "cus_42",
+      "items": [
+        {
+          "sku": "SKU-1",
+          "quantity": 2,
+          "unitPrice": 29.95
+        }
+      ]
+    }
+settings: {}
+examples: ./.resources/Create an order.resources/examples
+order: 2000
+scripts:
+  - type: afterResponse
+    code: |
+      function checkOrder(o) {
+        pm.expect(o).to.have.all.keys("id", "customerId", "status", "totalAmount", "items");
+        pm.expect(o.id).to.be.a("string");
+        pm.expect(o.totalAmount).to.be.a("number");
+        pm.expect(["PENDING","PAID","SHIPPED","CANCELLED"]).to.include(o.status);
+        pm.expect(o.items).to.be.an("array");
+      }
+      pm.test("201 and the order contract", () => { pm.response.to.have.status(201); checkOrder(pm.response.json()); });
+    language: text/javascript

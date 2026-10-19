@@ -1,0 +1,36 @@
+$kind: http-example
+name: A list of orders.
+request:
+  url: "{{baseUrl}}/orders?status=CANCELLED"
+  method: GET
+  headers:
+    Accept: application/json
+  queryParams:
+    status: CANCELLED
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      [
+        {
+          "id": "ord_1001",
+          "customerId": "cus_42",
+          "status": "PENDING",
+          "totalAmount": 59.9,
+          "items": [
+            {
+              "sku": "SKU-1",
+              "quantity": 2,
+              "unitPrice": 29.95
+            }
+          ]
+        }
+      ]
+order: 1000

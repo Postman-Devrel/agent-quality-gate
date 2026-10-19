@@ -1,0 +1,33 @@
+$kind: http-example
+name: The request is invalid.
+request:
+  url: "{{baseUrl}}/orders"
+  method: POST
+  headers:
+    Accept: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "customerId": "cus_42",
+        "items": [
+          {
+            "sku": "SKU-1",
+            "quantity": 2,
+            "unitPrice": 29.95
+          }
+        ]
+      }
+response:
+  statusCode: 400
+  statusText: Bad Request
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "code": "BAD_REQUEST",
+        "message": "items must not be empty"
+      }
+order: 2000

@@ -1,0 +1,28 @@
+$kind: http-example
+name: The order does not exist.
+request:
+  url: "{{baseUrl}}/orders/:orderId"
+  method: GET
+  headers:
+    Accept: application/json
+  pathVariables:
+    - key: orderId
+      value: ord_1001
+      disabled: false
+      description: (Required) Order identifier.
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 404
+  statusText: Not Found
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "code": "NOT_FOUND",
+        "message": "Order ord_9999 not found"
+      }
+order: 2000

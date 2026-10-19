@@ -1,0 +1,286 @@
+openapi: 3.1.0
+info:
+  title: Orders API
+  version: 1.0.0
+  description: Minimal Orders API used as the subject of the agent quality gate demo.
+servers:
+  - url: http://localhost:8080
+    description: Local Spring Boot app
+tags:
+  - name: Orders
+paths:
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List orders
+      description: Returns orders, optionally filtered by status.
+      tags: [Orders]
+      parameters:
+        - name: status
+          in: query
+          description: Only return orders in this status.
+          required: false
+          schema:
+            $ref: '#/components/schemas/OrderStatus'
+      responses:
+        '200':
+          description: A list of orders.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Order'
+              example:
+                - id: ord_1001
+                  customerId: cus_42
+                  status: PENDING
+                  totalAmount: 59.90
+                  items:
+                    - sku: SKU-1
+                      quantity: 2
+                      unitPrice: 29.95
+        '500':
+          $ref: '#/components/responses/ServerError'
+    post:
+      operationId: createOrder
+      summary: Create an order
+      description: Creates a new order in the PENDING status.
+      tags: [Orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            example:
+              customerId: cus_42
+              items:
+                - sku: SKU-1
+                  quantity: 2
+                  unitPrice: 29.95
+      responses:
+        '201':
+          description: The created order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: ord_1001
+                customerId: cus_42
+                status: PENDING
+                totalAmount: 59.90
+                items:
+                  - sku: SKU-1
+                    quantity: 2
+                    unitPrice: 29.95
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /orders/{orderId}:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    get:
+      operationId: getOrder
+      summary: Get an order
+      description: Returns a single order by id.
+      tags: [Orders]
+      responses:
+        '200':
+          description: The order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: ord_1001
+                customerId: cus_42
+                status: PENDING
+                totalAmount: 59.90
+                items:
+                  - sku: SKU-1
+                    quantity: 2
+                    unitPrice: 29.95
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/ServerError'
+    delete:
+      operationId: cancelOrder
+      summary: Cancel an order
+      description: Cancels an order that has not shipped yet. Returns the cancelled order.
+      tags: [Orders]
+      responses:
+        '200':
+          description: The cancelled order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: ord_1001
+                customerId: cus_42
+                status: CANCELLED
+                totalAmount: 59.90
+                items:
+                  - sku: SKU-1
+                    quantity: 2
+                    unitPrice: 29.95
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+  /orders/{orderId}/status:
+    parameters:
+      - $ref: '#/components/parameters/OrderId'
+    put:
+      operationId: updateOrderStatus
+      summary: Update the status of an order
+      description: Moves an order to a new status.
+      tags: [Orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+            example:
+              status: PAID
+      responses:
+        '200':
+          description: The updated order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Order'
+              example:
+                id: ord_1001
+                customerId: cus_42
+                status: PAID
+                totalAmount: 59.90
+                items:
+                  - sku: SKU-1
+                    quantity: 2
+                    unitPrice: 29.95
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/ServerError'
+components:
+  parameters:
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      description: Order identifier.
+      schema:
+        type: string
+        examples: [ord_1001]
+  schemas:
+    OrderStatus:
+      type: string
+      description: Lifecycle status of an order.
+      enum: [PENDING, PAID, SHIPPED, CANCELLED]
+    OrderItem:
+      type: object
+      required: [sku, quantity, unitPrice]
+      properties:
+        sku:
+          type: string
+          description: Product reference.
+        quantity:
+          type: integer
+          minimum: 1
+        unitPrice:
+          type: number
+          description: Price of one unit.
+    Order:
+      type: object
+      required: [id, customerId, status, totalAmount, items]
+      properties:
+        id:
+          type: string
+        customerId:
+          type: string
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+        totalAmount:
+          type: number
+          description: Sum of quantity x unitPrice over all items.
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+    CreateOrderRequest:
+      type: object
+      required: [customerId, items]
+      properties:
+        customerId:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        couponCode:
+          type: string
+          description: Optional discount code.
+    UpdateStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          $ref: '#/components/schemas/OrderStatus'
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+  responses:
+    BadRequest:
+      description: The request is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: BAD_REQUEST
+            message: items must not be empty
+    NotFound:
+      description: The order does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: NOT_FOUND
+            message: Order ord_9999 not found
+    Conflict:
+      description: The order state does not allow this operation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: CONFLICT
+            message: Order already shipped
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: INTERNAL_ERROR
+            message: Unexpected error
