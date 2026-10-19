@@ -107,7 +107,7 @@ Stated plainly, because a gate you cannot trust is worse than none.
 - **Contract lint does not catch breaking changes.** No built-in governance rule flags a rename or a new required field.
 - **Collection tests are state-dependent**: they assume the three seeded orders of a fresh app start.
 - **Postman v3 format**: the collection is a folder of YAML files, not one `*.postman_collection.json`.
-- **Not verified on GitHub yet** (see the status in the final check section of [docs/architecture.md](docs/architecture.md)).
+- **CI run not verified end to end yet**: the workflow structure is validated, but a real run needs the `POSTMAN_API_KEY` secret.
 
 ## Related topics
 
