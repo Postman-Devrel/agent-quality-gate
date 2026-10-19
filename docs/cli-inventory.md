@@ -7,10 +7,10 @@ Nothing here is guessed. "Verified" means the command was executed; "Docs" cross
 |---|-----------|---------|--------------|--------|-----------|
 | 1 | Skills check | `postman skills status --json [--strict]` | Yes (verified) | JSON: `state` = `current` / `behind` / `modified` / `unknown`, plus a per-file list and `orphans` | 0 = check done, 1 = origin unreachable, 3 = not current **and** `--strict` |
 | 2 | Contract lint | `postman spec lint contract/openapi.yaml -o json -f warning --no-report-events` | Yes (verified) | JSON `{ "violations": [ ... ] }`; table by default | non-zero when a violation reaches `--fail-severity` (default `ERROR`) |
-| 3a | Tests: contract run | `postman collection run "postman/collections/Orders API" --use-mock "{{baseUrl}} mock:postman/mocks/orders-mock" --output <dir>` | Yes (verified) | YAML run report: `*.collection-run-summary.yaml` + `*.collection-run-executions.yaml` | non-zero when an assertion fails (`-x` suppresses it) |
+| 3a | Tests: contract run | `postman collection run "postman/collections/Appointments API" --use-mock "{{baseUrl}} mock:postman/mocks/orders-mock" --output <dir>` | Yes (verified) | YAML run report: `*.collection-run-summary.yaml` + `*.collection-run-executions.yaml` | non-zero when an assertion fails (`-x` suppresses it) |
 | 3b | Tests: JUnit | `mvn test` (not a Postman command) | n/a | Surefire XML in `target/surefire-reports` | non-zero on failure |
 | 4 | AI readiness | `postman spec ai-readiness contract/openapi.yaml -o json [--min-score N]` | Yes (verified) | JSON with `readiness.score_0_100`, `readiness.bucket`, `signals`, `recommendations`, `docCoverage` | non-zero when score < `--min-score` |
-| 4b | AI readiness (collection) | `postman collection ai-readiness "postman/collections/Orders API" -o json` | Yes (verified) | Same shape, `sourceType: collection` | same |
+| 4b | AI readiness (collection) | `postman collection ai-readiness "postman/collections/Appointments API" -o json` | Yes (verified) | Same shape, `sourceType: collection` | same |
 | 5 | Impact | `postman context-graph ask "<question>" --wait --json` | Yes, free text only (verified, see below) | JSON ask record: `status`, `result.answer`, `result.citations[]` | 0 on completion |
 
 ## Findings per step
@@ -44,7 +44,7 @@ The plugin is updated with `claude plugin update postman` (named in the CLI help
 - The team is derived from the API key. With the key of the team that ingested `healthcare-org-app/healthcare-appointments`, the question "Which services consume or depend on appointments-service?" returns `patients-service` (`GET /api/appointments/`, confidence 0.9).
 - The gate asks for a **JSON-only** answer (`[{name, endpoint, protocol, confidence}]`). It came back as `[]` once in four runs, so `05-impact.sh` retries empty answers up to 3 times.
 - "Breaking" does **not** come from the Context Graph: it is a heuristic on `git diff <base> -- contract/openapi.yaml` (removed or renamed property or path, changed `required:` list). Breaking plus at least one consumer is a hard blocker.
-- Mismatch to keep in mind: the consumers are those of `appointments-service` (set with `IMPACT_API`), not of the demo Orders API, which the graph does not know.
+- Mismatch to keep in mind: the consumers are those of `appointments-service` (set with `IMPACT_API`), not of the demo Appointments API, which the graph does not know.
 - Needs the `POSTMAN_API_KEY` of the team holding the ingestion; without it the step is `not_available`.
 
 ## Commands the plan guessed that do not exist

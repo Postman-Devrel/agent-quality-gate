@@ -54,8 +54,8 @@ Example report: [scenarios/02-agent-breaking-change.md](scenarios/02-agent-break
 
 | Path | Content |
 |------|---------|
-| `contract/openapi.yaml` | OpenAPI 3.1 contract of the demo Orders API |
-| `src/` | Spring Boot 3 / Java 21 implementation (5 endpoints, in-memory) |
+| `contract/openapi.yaml` | OpenAPI 3.1 contract of `appointments-service` (from `healthcare-org-app/healthcare-appointments`) |
+| `src/` | Spring Boot 3 / Java 21 implementation of that contract (in-memory, written for this demo) |
 | `postman/` | v3 collection with `pm.test` assertions, local mock, spec link (synced to a Postman workspace) |
 | `gate/` | the 5 step scripts, `aggregate.js`, `run-all.sh`, shared helpers |
 | `.github/workflows/quality-gate.yml` | the CI pipeline |
@@ -94,8 +94,8 @@ No workspace ID, API ID or mock URL is needed in CI: the contract and the collec
 
 | Scenario | Branch | Result |
 |----------|--------|--------|
-| [Safe change](scenarios/01-safe-change.md): optional field added to `Order` | `demo/safe-change` | rating **A**, passes |
-| [Agent breaking change](scenarios/02-agent-breaking-change.md): response field renamed, request field made required, unit tests updated | `demo/agent-breaking-change` | rating **D**, fails on a failing collection run and a breaking impact |
+| [Safe change](scenarios/01-safe-change.md): optional field added to `Appointment` | `demo/safe-change` | rating **A**, passes |
+| [Agent breaking change](scenarios/02-agent-breaking-change.md): response field renamed, request field made required, unit tests updated | `demo/agent-breaking-change` | fails on a failing collection run and a breaking impact (rating C, two blockers) |
 
 ## Known limits
 
@@ -103,9 +103,11 @@ Stated plainly, because a gate you cannot trust is worse than none.
 
 - **`skills-check` is `not_available`.** In Postman CLI 1.73.0 and 1.75.0, `postman skills status` answers `foreign` on a freshly initialised repo, so there is nothing to score. It also checks the skills committed in the repo, not the version of the agent plugin (`claude plugin update postman`).
 - **Impact depends on an LLM.** `context-graph ask` returns free text. The step asks for JSON only and retries an empty answer up to 3 times, but it can still miss a consumer. "Breaking" is a heuristic on the contract diff (removed or renamed property or path, changed `required:` list), not a real compatibility check.
-- **Impact does not know the Orders API.** The graph holds `appointments-service` (ingested from `healthcare-org-app/healthcare-appointments`), so the consumers shown are its consumers. The demo API stands in for it.
+- **Impact needs the Context Graph of the right team.** The graph must hold `appointments-service` (ingested from `healthcare-org-app/healthcare-appointments`), and `POSTMAN_API_KEY` must belong to that team.
 - **Contract lint does not catch breaking changes.** No built-in governance rule flags a rename or a new required field.
-- **Collection tests are state-dependent**: they assume the three seeded orders of a fresh app start.
+- **Collection `baseUrl` is the local server** (`http://localhost:8080`), not the production server of the spec: the gate always redirects it to a generated mock.
+- **Collection tests are state-dependent**: they assume the seeded appointment `2317` of a fresh app start.
+- **The Java code is a reimplementation**, not the original Flask service: only the contract is shared with `healthcare-appointments`.
 - **Postman v3 format**: the collection is a folder of YAML files, not one `*.postman_collection.json`.
 - **CI run not verified end to end yet**: the workflow structure is validated, but a real run needs the `POSTMAN_API_KEY` secret.
 

@@ -1,6 +1,6 @@
 # Scenario 1: safe change (rating A)
 
-An optional `note` field is added to the `Order` response. Nothing a consumer relies on moves.
+An optional, documented `reason` field is added to the `Appointment` response. Nothing a consumer relies on moves.
 
 Branch: `demo/safe-change` (one commit on top of `main`).
 
@@ -8,9 +8,9 @@ Branch: `demo/safe-change` (one commit on top of `main`).
 
 | File | Change |
 |------|--------|
-| `contract/openapi.yaml` | adds `note` (string) to `Order`, **not** in `required` |
-| `src/main/java/.../Order.java` | adds `String note`, omitted from JSON when null |
-| `src/test/java/.../OrdersControllerTest.java` | a test that `note` is absent when empty |
+| `contract/openapi.yaml` | adds `reason` (string) to `Appointment`, **not** in `required` |
+| `src/main/java/.../AppointmentStore.java` | trims `reason` on create |
+| `src/test/java/.../AppointmentsControllerTest.java` | `reason` is optional and trimmed |
 
 ## Reproduce
 
@@ -18,7 +18,7 @@ Branch: `demo/safe-change` (one commit on top of `main`).
 git switch demo/safe-change
 GATE_BASE_REF=main ./gate/run-all.sh          # local run, same output as CI
 git push -u origin demo/safe-change
-gh pr create --base main --head demo/safe-change --title "Add an optional note to Order"
+gh pr create --base main --head demo/safe-change --title "Add an optional reason to Appointment"
 ```
 
 `MVN=/path/to/mvn` points the tests step to a Maven that is not on the `PATH`.
@@ -26,14 +26,12 @@ gh pr create --base main --head demo/safe-change --title "Add an optional note t
 
 ## Expected report
 
-Rating **A**, gate **PASSED**:
+Rating **A** (93/100), gate **PASSED**:
 
 | Step | Status | Score |
 |------|--------|------:|
 | skills-check | not_available (see Known limits in the README) | – |
 | contract-lint | pass | 100 |
-| tests | pass: JUnit green, Postman 5/5 | 100 |
-| ai-readiness | pass: 90/100 | 90 |
-| impact | pass: additive change, 1 known consumer | 100 |
-
-Composite score: 98/100.
+| tests | pass: JUnit green, Postman 10/10 | 100 |
+| ai-readiness | warn: 70/100 | 70 |
+| impact | pass: additive change, 1 known consumer (`patients-service`) | 100 |
