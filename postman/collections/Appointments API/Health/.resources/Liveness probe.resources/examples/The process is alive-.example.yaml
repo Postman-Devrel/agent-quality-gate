@@ -1,0 +1,27 @@
+$kind: http-example
+name: The process is alive.
+request:
+  url: "{{baseUrl}}/health"
+  method: GET
+  headers:
+    - key: Authorization
+      value: Bearer <token>
+      description: "Added as a part of security scheme: bearer"
+    - key: Accept
+      value: application/json
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "status": "string",
+        "service": "appointments-service"
+      }
+order: 1000

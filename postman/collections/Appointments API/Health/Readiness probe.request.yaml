@@ -1,0 +1,23 @@
+$kind: http-request
+description: |
+  Checks the Postgres connection with `SELECT 1`. Kafka is not probed — the
+  producer is created lazily — so a green `/ready` does not imply a reachable
+  broker.
+url: '{{baseUrl}}/ready'
+method: GET
+headers:
+  Accept: application/json
+settings: {}
+examples: ./.resources/Readiness probe.resources/examples
+order: 2000
+scripts:
+  - type: afterResponse
+    code: |
+      function checkAppointment(a) {
+        // Envelope fields are the contract consumers rely on; extra keys are expected.
+        pm.expect(a).to.include.all.keys("id", "status", "created_at", "updated_at");
+        pm.expect(a.id).to.be.a("number");
+        pm.expect(a.status).to.be.a("string");
+      }
+      pm.test("200 on probe", () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an("object"); });
+    language: text/javascript

@@ -1,0 +1,20 @@
+$kind: http-request
+description: Always returns `200` if the process is up. Performs no dependency checks.
+url: '{{baseUrl}}/health'
+method: GET
+headers:
+  Accept: application/json
+settings: {}
+examples: ./.resources/Liveness probe.resources/examples
+order: 1000
+scripts:
+  - type: afterResponse
+    code: |
+      function checkAppointment(a) {
+        // Envelope fields are the contract consumers rely on; extra keys are expected.
+        pm.expect(a).to.include.all.keys("id", "status", "created_at", "updated_at");
+        pm.expect(a.id).to.be.a("number");
+        pm.expect(a.status).to.be.a("string");
+      }
+      pm.test("200 on probe", () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an("object"); });
+    language: text/javascript

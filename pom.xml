@@ -12,10 +12,10 @@
   </parent>
 
   <groupId>com.example</groupId>
-  <artifactId>orders-api</artifactId>
+  <artifactId>appointments-api</artifactId>
   <version>1.0.0</version>
-  <name>orders-api</name>
-  <description>Demo Orders API for the agent quality gate</description>
+  <name>appointments-api</name>
+  <description>Java implementation of the appointments-service contract, subject of the agent quality gate</description>
 
   <properties>
     <!-- Compiled for Java 21 even when a newer JDK runs the build. -->

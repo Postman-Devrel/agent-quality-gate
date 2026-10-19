@@ -1,0 +1,48 @@
+$kind: collection
+description: |
+  HTTP API for `appointments-service` (domain: **appointments**, port **8600**).
+
+  Records are stored as a fixed envelope (`id`, `status`, `created_at`,
+  `updated_at`) around a free-form JSONB `data` document. Responses flatten the
+  two: envelope fields sit alongside the caller-supplied `data` keys at the top
+  level of the object. That is why `Appointment` allows additional properties.
+
+  ### Side effects
+  Every mutating endpoint publishes a Kafka domain event, and *every* endpoint
+  (reads included) publishes an `audit.event`. The events are listed per
+  operation below.
+
+  ### `slot_id` and the slot lifecycle
+  If an appointment carries a `slot_id`, that value drives
+  `appointment-slots-service`, which consumes this service's events and flips
+  the referenced slot between `booked` and `open`. Note that
+  `appointments-service` never validates `slot_id` — it is stored as an
+  ordinary `data` key and no lookup is performed, even though
+  `appointment-slots-service` is declared as an HTTP dependency.
+
+  > ⚠️ **`appointment.cancelled` is published more widely than its name
+  > suggests.** The service sets its generic "record updated" event to
+  > `appointment.cancelled`, so `PATCH`, `PUT` and `DELETE` all emit it —
+  > not just `POST /cancel`. Because `appointment-slots-service` reopens a slot
+  > whenever it sees that event, an unrelated `PATCH` will free the
+  > appointment's slot while the appointment itself remains active. Treat this
+  > as documented current behaviour, not intended design.
+
+  ### Peer enrichment on create
+  `POST /api/appointments/` calls out to peer services to snapshot related
+  records. Each lookup is best-effort: on failure the response carries a
+  `*_warn` string instead of a `*_snapshot` object.
+
+  | Request field  | Peer service        | Adds on success      | Adds on failure  |
+  |----------------|---------------------|----------------------|------------------|
+  | `patient_id`   | `patients-service`  | `patient_snapshot`   | `patient_warn`   |
+  | `provider_id`  | `providers-service` | `provider_snapshot`  | `provider_warn`  |
+variables:
+  baseUrl: http://localhost:8080
+  bearerToken: ""
+auth:
+  - id: da7af95f-1f10-4902-9328-4fa308c658cb
+    type: bearer
+    name: bearer auth
+    credentials:
+      token: "{{bearerToken}}"

@@ -1,0 +1,10 @@
+version: 1
+id: dba2f181-8eb0-41e1-9987-2bb03b761daf
+name: appointments-mock
+slug: appointments-mock
+protocol: http
+port: 4010
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true

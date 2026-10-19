@@ -12,7 +12,7 @@
 
 RESULTS_DIR="${GATE_RESULTS_DIR:-gate-results}"
 CONTRACT="${CONTRACT:-contract/openapi.yaml}"
-COLLECTION="${COLLECTION:-postman/collections/Orders API}"
+COLLECTION="${COLLECTION:-postman/collections/Appointments API}"
 
 log() { printf '[gate:%s] %s\n' "${STEP:-?}" "$*" >&2; }
 

@@ -24,7 +24,7 @@ add_detail junit "$junit_msg"
 
 # --- b) Postman collection against a fresh mock ------------------------------
 work="$(mktemp -d)"
-postman mock generate "$CONTRACT" -n orders-mock --port 4010 -o "$work/mock" --force >/dev/null 2>&1
+postman mock generate "$CONTRACT" -n appointments-mock --port 4010 -o "$work/mock" --force >/dev/null 2>&1
 postman collection run "$COLLECTION" --use-mock "{{baseUrl}} mock:$work/mock/config.yaml" \
   --output "$work/run" > "$work/run.log" 2>&1
 summary_file="$(ls "$work"/run/*summary.yaml 2>/dev/null | head -1)"
