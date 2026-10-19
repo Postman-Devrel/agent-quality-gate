@@ -11,7 +11,7 @@ Nothing here is guessed. "Verified" means the command was executed; "Docs" cross
 | 3b | Tests: JUnit | `mvn test` (not a Postman command) | n/a | Surefire XML in `target/surefire-reports` | non-zero on failure |
 | 4 | AI readiness | `postman spec ai-readiness contract/openapi.yaml -o json [--min-score N]` | Yes (verified) | JSON with `readiness.score_0_100`, `readiness.bucket`, `signals`, `recommendations`, `docCoverage` | non-zero when score < `--min-score` |
 | 4b | AI readiness (collection) | `postman collection ai-readiness "postman/collections/Orders API" -o json` | Yes (verified) | Same shape, `sourceType: collection` | same |
-| 5 | Impact | `postman context-graph ask "<question>" --wait --json` | Partial (verified, see below) | JSON ask record: `status`, `result.answer` (free text), `result.citations[]` | 0 on completion |
+| 5 | Impact | `postman context-graph ask "<question>" --wait --json` | Yes, free text only (verified, see below) | JSON ask record: `status`, `result.answer`, `result.citations[]` | 0 on completion |
 
 ## Findings per step
 
@@ -39,11 +39,13 @@ The plugin is updated with `claude plugin update postman` (named in the CLI help
 - Current contract: **90 / 100, bucket "Excellent"**, confidence high. Top-level keys: `source, sourceType, complexity, readiness, confidence, docCoverage, signals, recommendations, stats`.
 - `--min-score` gives a pass/fail exit code, but the gate wants the raw number, so the script reads `readiness.score_0_100`.
 
-### 5. Impact (Context Graph) — exists, not reliable enough to be a hard gate
-- `postman context-graph ask` is a natural-language question answered by an LLM service: output is free text plus citations, **no structured consumer list, no breaking-change flag**.
-- Verified answer for "Which APIs or consumers depend on the Orders API?": "no API specifically named Orders API" (the repo has not been ingested), plus unrelated APIs with `/orders` paths.
-- Ingestion exists: `postman context-graph ingest git <repoUrls...>` and `ingest workspaces`. Not run yet (it writes to the team's graph, so it needs your approval).
-- Decision proposed: step 5 returns `not_available` unless a graph answer can be parsed. For the breaking-change demo, the "consumers" would come from the Context Graph only if the repo and workspace are ingested and the answer names consumers. Until then the script prints `NOT_AVAILABLE` and the report shows it in grey.
+### 5. Impact (Context Graph) — works through a JSON-only prompt, with caveats
+- `postman context-graph ask` is answered by an LLM service: free text plus citations; `provenance` only echoes the typed query, not its result. There is no structured consumer list and no breaking flag.
+- The team is derived from the API key. With the key of the team that ingested `healthcare-org-app/healthcare-appointments`, the question "Which services consume or depend on appointments-service?" returns `patients-service` (`GET /api/appointments/`, confidence 0.9).
+- The gate asks for a **JSON-only** answer (`[{name, endpoint, protocol, confidence}]`). It came back as `[]` once in four runs, so `05-impact.sh` retries empty answers up to 3 times.
+- "Breaking" does **not** come from the Context Graph: it is a heuristic on `git diff <base> -- contract/openapi.yaml` (removed or renamed property or path, changed `required:` list). Breaking plus at least one consumer is a hard blocker.
+- Mismatch to keep in mind: the consumers are those of `appointments-service` (set with `IMPACT_API`), not of the demo Orders API, which the graph does not know.
+- Needs the `POSTMAN_API_KEY` of the team holding the ingestion; without it the step is `not_available`.
 
 ## Commands the plan guessed that do not exist
 | Guess | Reality |
