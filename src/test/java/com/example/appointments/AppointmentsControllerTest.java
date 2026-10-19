@@ -41,6 +41,17 @@ class AppointmentsControllerTest {
     }
 
     @Test
+    void reasonIsOptionalAndTrimmed() throws Exception {
+        mvc.perform(post("/api/appointments").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"patient_id\":77,\"reason\":\"  Checkup  \"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.reason").value("Checkup"));
+        mvc.perform(post("/api/appointments").contentType(MediaType.APPLICATION_JSON).content("{\"patient_id\":78}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.reason").doesNotExist());
+    }
+
+    @Test
     void missingAppointmentReturnsError() throws Exception {
         mvc.perform(get("/api/appointments/999999"))
                 .andExpect(status().isNotFound())

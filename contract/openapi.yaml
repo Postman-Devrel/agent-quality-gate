@@ -597,6 +597,10 @@ components:
           type: string
           format: date-time
           readOnly: true
+        reason:
+          type: string
+          description: Optional free-text reason for the visit. Leading and trailing spaces are trimmed.
+          example: Annual physical
         patient_id:
           type: integer
           format: int64

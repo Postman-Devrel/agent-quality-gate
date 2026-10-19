@@ -70,6 +70,9 @@ public class AppointmentStore {
     public Record create(Map<String, Object> payload) {
         var data = new LinkedHashMap<>(payload);
         data.remove("id"); // server-assigned
+        if (data.get("reason") instanceof String reason) {
+            data.put("reason", reason.strip()); // documented optional field: trimmed
+        }
         var now = Instant.now();
         var record = new Record(sequence.incrementAndGet(), "active", data, now, now);
         records.put(record.id(), record);
