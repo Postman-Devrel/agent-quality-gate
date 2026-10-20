@@ -61,6 +61,9 @@ declare module 'claude-code' {
       note: string
       isHidden: boolean
       overview: OverviewRow[]
+      view: 'auto' | 'local' | 'ci'
+      fixOpen: boolean
+      branchesOpen: boolean
     }
   }
 }
