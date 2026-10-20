@@ -19,8 +19,8 @@ Nothing here is guessed. "Verified" means the command was executed; "Docs" cross
 `postman skills status` compares the skills **committed in `postman/skills/`** against the published ones. It does **not** check the Claude Code plugin version.
 The plugin is updated with `claude plugin update postman` (named in the CLI help), which cannot run in CI.
 - Gate design: score the repo skills with `skills status` (verified); report the plugin version as informational only.
-- **Blocker found while writing the script:** on a pristine `git init && postman init` repo (CLI 1.73.0 and 1.75.0), `postman skills status` answers `foreign` (exit 1) and `postman skills update` refuses with exit 4, as if the 45 skill files that `init` just wrote were "source files". It only reports `behind/missing` when the skills folder holds no files, or when given `postman/skills` as the path. Looks like a CLI bug; not worked around.
-- Gate design: `01-skills-check.sh` maps `current` to pass, `behind`/`modified`/`unknown` to warn, and anything else (including `foreign`) to `not_available`. **Today it reports `not_available` in this repo.**
+- **CLI bug, root cause found:** on a pristine `git init && postman init` repo (CLI 1.73.0 and 1.75.0), `postman skills status` answers `foreign` (exit 1) and `postman skills update` refuses with exit 4. The cause is the two `.py` files that ship with the skills (`performance-testing/references/jmeter-import/scripts/`): the CLI counts them as "source files". Deleting them gives `behind`; `skills update` brings them back and breaks it again.
+- Gate design: `01-skills-check.sh` runs `postman skills status --json` on a **temporary copy** of `postman/skills` and `.postman/` without `.py` files, ignores the two `missing` `.py` entries, and maps the rest to `current` (pass), `modified` or `behind` (warn). Verified on this repo: `current` unmodified, `modified` after a local edit.
 - `postman skills update` exits 4 when a skill file was edited locally (needs `--force`).
 
 ### 2. Contract lint — works

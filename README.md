@@ -31,7 +31,7 @@ Each script runs one Postman CLI command and writes `gate-results/<step>.json` (
 
 | # | Step | Sonar analogy | Command | What it checks |
 |---|------|---------------|---------|----------------|
-| 1 | `skills-check` | dependency-check | `postman skills status --json` | Postman skills committed in the repo are current. An outdated skill is a vulnerable library. **Not available today**, see Known limits |
+| 1 | `skills-check` | dependency-check | `postman skills status --json` | Postman skills committed in the repo are current. An outdated skill is a vulnerable library. Works around a CLI bug, see Known limits |
 | 2 | `contract-lint` | linter | `postman spec lint contract/openapi.yaml -o json` | OpenAPI contract against Postman governance rules |
 | 3 | `tests` | unit tests + coverage | `mvn test` + `postman collection run … --use-mock …` | JUnit, then the Postman collection (the consumers' expectation) replayed against a mock **regenerated from the current contract** |
 | 4 | `ai-readiness` | maintainability | `postman spec ai-readiness contract/openapi.yaml -o json` | How well an agent can discover, understand and call the API |
@@ -101,7 +101,7 @@ No workspace ID, API ID or mock URL is needed in CI: the contract and the collec
 
 Stated plainly, because a gate you cannot trust is worse than none.
 
-- **`skills-check` is `not_available`.** In Postman CLI 1.73.0 and 1.75.0, `postman skills status` answers `foreign` on a freshly initialised repo, so there is nothing to score. It also checks the skills committed in the repo, not the version of the agent plugin (`claude plugin update postman`).
+- **`skills-check` works around a Postman CLI bug.** In CLI 1.73.0 and 1.75.0, `postman skills status` answers `foreign` as soon as `postman/skills` holds a `.py` file, and the skills ship two of them. The step checks a temporary copy without `.py` files and ignores those two. It checks the skills committed in the repo, not the version of the agent plugin (`claude plugin update postman`).
 - **Impact depends on an LLM.** `context-graph ask` returns free text. The step asks for JSON only and retries an empty answer up to 3 times, but it can still miss a consumer. "Breaking" is a heuristic on the contract diff (removed or renamed property or path, changed `required:` list), not a real compatibility check.
 - **Impact needs the Context Graph of the right team.** The graph must hold `appointments-service` (ingested from `healthcare-org-app/healthcare-appointments`), and `POSTMAN_API_KEY` must belong to that team.
 - **Contract lint does not catch breaking changes.** No built-in governance rule flags a rename or a new required field.
