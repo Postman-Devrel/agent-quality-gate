@@ -88,7 +88,9 @@ jobs:
 
   quality-gate:
     needs: gate
-    if: always() # decide even when a gate job crashed: a missing result counts as not_available
+    # Decide even when a gate job crashed (a missing result counts as not_available), but not when the
+    # whole run was cancelled by the concurrency group: that run has no results and must not report a failure.
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
