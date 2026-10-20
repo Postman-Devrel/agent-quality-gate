@@ -45,6 +45,8 @@ export type OverviewRow = {
   blockers: number
   sha: string
   runId: number
+  /** ISO time the run was created. */
+  updatedAt: string
   isCurrent: boolean
 }
 
@@ -52,6 +54,8 @@ declare module 'claude-code' {
   interface PluginState {
     'quality-gate-panel': {
       report: GateReport | null
+      local: GateReport | null
+      ciReport: GateReport | null
       run: CiRun | null
       branch: string
       note: string
