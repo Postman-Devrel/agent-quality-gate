@@ -18,6 +18,7 @@ A code quality tool analyzes code. Nothing in that stack looks at the API *contr
 | `gate/` | the five gate steps, `aggregate.js`, `run-all.sh`, `lib/` helpers |
 | `quality-gate.yml` | weights, rating scale, blockers |
 | `.github/workflows/quality-gate.yml` | the CI pipeline |
+| `mods/` | the Claude Code mod that displays the gate |
 | `.claude/agents/` | `api-coder` (implements and fixes) and `gate-reviewer` (reads the gate result, writes a fixes brief) |
 | `docs/` | CLI inventory, architecture |
 
@@ -93,6 +94,10 @@ Two agents work on this repo (`.claude/agents/`), each with a narrow role:
 - **`gate-reviewer`** is read-only. It finds the CI run for the exact commit that was pushed, reads the gate report and writes a prioritised fixes brief for the coder.
 
 The Postman plugin handles everything Postman for the agents (`npx @postman/postman-plugin install`); CI has no agent, so the gate scripts call the Postman CLI directly.
+
+## Claude Code mod
+
+`mods/quality-gate-panel` is a Claude Code mod that shows the gate in the session: a band above the prompt, a status line entry, a `/gate` pane and toasts when the CI run changes. See [its README](mods/quality-gate-panel/README.md).
 
 ## Known limits
 
