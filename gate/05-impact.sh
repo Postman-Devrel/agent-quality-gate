@@ -49,7 +49,8 @@ fi
 # --- 3. Verdict ---------------------------------------------------------------------
 details="$(mktemp)"
 echo "$consumers" | jq --argjson breaking "$([ "$breaking" = true ] && [ "$count" -gt 0 ] && echo true || echo false)" \
-  'map(. + {api: "'"$IMPACT_API"'", breaking: $breaking})' > "$details"
+  'map(. + {api: "'"$IMPACT_API"'", breaking: $breaking, check: "consumer", result: (.name + " calls " + (.endpoint // "?")),
+    hint: (if $breaking then "This change breaks " + .name + ". Keep the removed or renamed field/path (add the new one next to it) and do not make request fields required, or version the API." else "Known consumer, no action." end)})' > "$details"
 
 if   [ "$breaking" = true ] && [ "$count" -gt 0 ]; then
   emit fail 0 "Breaking contract change: $count consumer(s) of $IMPACT_API affected ($(echo "$consumers" | jq -r 'map(.name)|join(", ")'))" "$CMD" "$details"

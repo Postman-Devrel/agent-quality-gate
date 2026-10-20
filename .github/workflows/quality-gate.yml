@@ -4,8 +4,15 @@
 name: quality-gate
 
 on:
+  push:
+    branches-ignore: [main] # a coding agent pushes a branch: the gate runs without waiting for a PR
   pull_request:
   workflow_dispatch:
+
+# One run per branch: a new push (or the PR event for the same branch) replaces the previous run.
+concurrency:
+  group: quality-gate-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -25,7 +32,7 @@ jobs:
           java-version: '21'
           cache: maven
       # Compile only: tests belong to the gate (step 3), not to the build.
-      - run: mvn -B -DskipTests package
+      - run: ./mvnw -B -DskipTests package
 
   gate:
     needs: build
@@ -87,6 +94,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: write # to post the report comment
+      actions: read
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
@@ -100,7 +108,7 @@ jobs:
       - name: Aggregate (score, rating, report, job summary)
         run: node gate/aggregate.js --no-exit-code
       - name: Post or update the PR comment
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'workflow_dispatch'
         continue-on-error: true # fork PRs get a read-only token
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7.0.1
         with:
@@ -109,7 +117,13 @@ jobs:
             const body = fs.readFileSync('gate-results/report.md', 'utf8');
             const marker = '<!-- agent-quality-gate -->';
             const { owner, repo } = context.repo;
-            const issue_number = context.issue.number;
+            // pull_request event: the PR is in the context. push event: look up the open PR of the branch.
+            let issue_number = context.payload.pull_request?.number;
+            if (!issue_number) {
+              const prs = await github.rest.pulls.list({ owner, repo, state: 'open', head: `${owner}:${context.ref_name || process.env.GITHUB_REF_NAME}` });
+              issue_number = prs.data[0]?.number;
+            }
+            if (!issue_number) { core.info('No open PR for this branch: report is in the job summary.'); return; }
             const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
             const existing = comments.find((c) => c.body && c.body.includes(marker));
             if (existing) {

@@ -90,6 +90,15 @@ Required secrets and variables:
 
 No workspace ID, API ID or mock URL is needed in CI: the contract and the collection are local files, and the mock is generated on the runner.
 
+## Run it live
+
+```bash
+./scripts/demo-api.sh      # builds with the Maven wrapper, starts the API, runs the Postman collection against it
+./gate/run-all.sh          # the five gate steps and the report, locally
+```
+
+The two-agent demo (a coder agent pushes a change, the gate runs in CI, a reviewer agent reads the result and briefs the coder) is described in [docs/demo-runbook.md](docs/demo-runbook.md). Agents live in `.claude/agents/`, the loop is the `/demo-loop` command.
+
 ## Demo scenarios
 
 | Scenario | Branch | Result |
@@ -107,7 +116,7 @@ Stated plainly, because a gate you cannot trust is worse than none.
 - **Contract lint does not catch breaking changes.** No built-in governance rule flags a rename or a new required field.
 - **Collection `baseUrl` is the local server** (`http://localhost:8080`), not the production server of the spec: the gate always redirects it to a generated mock.
 - **Collection tests are state-dependent**: they assume the seeded appointment `2317` of a fresh app start.
-- **The Java code is a reimplementation**, not the original Flask service: only the contract is shared with `healthcare-appointments`.
+- **The Java code is a reimplementation**, not the original Flask service: only the contract is shared with `healthcare-appointments`. Its documented side effects (Kafka events, audit events, peer enrichment on create) and authentication are not implemented.
 - **Postman v3 format**: the collection is a folder of YAML files, not one `*.postman_collection.json`.
 - **CI run not verified end to end yet**: the workflow structure is validated, but a real run needs the `POSTMAN_API_KEY` secret.
 
