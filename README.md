@@ -75,7 +75,7 @@ GATE_BASE_REF=origin/main ./gate/05-impact.sh   # branch the contract diff is co
 
 ## CI
 
-`.github/workflows/quality-gate.yml`: `build`, then the five gate steps in parallel (a matrix), then `quality-gate`, which aggregates, writes the job summary, posts or updates one comment on the branch's pull request, uploads the `gate-report` artifact and fails when the gate fails. It runs on every push to a branch other than `main`, on pull requests and on manual dispatch. Make the `quality-gate` job a required check to block merges.
+`.github/workflows/quality-gate.yml`: `build`, then the five gate steps in parallel (a matrix), then `quality-gate`, which aggregates, writes the job summary, posts or updates one comment on the branch's pull request, uploads the `gate-report` artifact and fails when the gate fails. It runs on every push, on pull requests and on manual dispatch, but only does the work when the branch changes something the gate judges (`contract/`, `src/`, `postman/`, `.postman/`, `gate/`, the Maven files, `quality-gate.yml` or the workflow itself); for docs, the mod or the agents' files the `quality-gate` job succeeds at once and says the gate was skipped, so it stays usable as a required check. Make the `quality-gate` job a required check to block merges.
 
 Secrets and variables:
 
