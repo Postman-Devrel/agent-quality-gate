@@ -18,9 +18,14 @@ const note = atom({ plugin: 'quality-gate-panel', key: 'note' } as const, '')
 // The band above the prompt is off by default: the pane is the main view. /gate-band turns it on.
 const isHidden = atom({ plugin: 'quality-gate-panel', key: 'isHidden' } as const, true)
 const overview = atom({ plugin: 'quality-gate-panel', key: 'overview' } as const, [])
+// Pane layout: which report the detail shows, and which sections are folded.
+const view = atom({ plugin: 'quality-gate-panel', key: 'view' } as const, 'auto')
+const fixOpen = atom({ plugin: 'quality-gate-panel', key: 'fixOpen' } as const, true)
+const branchesOpen = atom({ plugin: 'quality-gate-panel', key: 'branchesOpen' } as const, true)
 
-const ICON = { pass: '●', warn: '●', fail: '●', not_available: '○' } as const
-const COLOR = { pass: 'success', warn: 'warning', fail: 'error', not_available: 'inactive' } as const
+/** Vibrant palette (hex, so it does not depend on the person's theme). */
+const C = { ok: '#34d399', warn: '#fbbf24', bad: '#fb7185', idle: '#64748b', accent: '#a78bfa', info: '#22d3ee', track: '#334155', ink: '#0b1020' } as const
+const COLOR = { pass: C.ok, warn: C.warn, fail: C.bad, not_available: C.idle } as const
 const SHORT: Record<string, string> = {
   'skills-check': 'skills',
   'contract-lint': 'lint',
@@ -29,11 +34,11 @@ const SHORT: Record<string, string> = {
   impact: 'impact',
 }
 
-const ratingColor = (r: GateReport) => (r.passed ? 'success' : 'error')
+const ratingColor = (r: GateReport) => (r.passed ? C.ok : C.bad)
 
 /** Color and short label of a branch chip in the band: the rating once known, else the run state. */
 const chipColor = (o: OverviewRow) =>
-  o.status !== 'completed' ? 'warning' : o.passed === true ? 'success' : o.passed === false || o.conclusion === 'failure' ? 'error' : 'inactive'
+  o.status !== 'completed' ? C.warn : o.passed === true ? C.ok : o.passed === false || o.conclusion === 'failure' ? C.bad : C.idle
 const chipLabel = (o: OverviewRow) =>
   o.status !== 'completed' ? `${o.status}…` : o.rating !== '' ? `${o.rating}${o.score}${o.passed ? '' : '✘'}` : o.conclusion || '?'
 
@@ -246,7 +251,7 @@ function scoreBar(Text: any, score: number | null, color: string, width = 16) {
   return (
     <Text>
       <Text backgroundColor={color}>{' '.repeat(n)}</Text>
-      <Text backgroundColor="inactive">{' '.repeat(width - n)}</Text>
+      <Text backgroundColor={C.track}>{' '.repeat(width - n)}</Text>
     </Text>
   )
 }
@@ -268,57 +273,108 @@ const ago = (iso: string, now: number) => {
 
 const STATUS_LABEL = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', not_available: 'N/A' } as const
 
-/** A colored pill: text on a solid background. */
+/** A colored pill: dark text on a solid vibrant background. */
 function pill(Text: any, label: string, color: string) {
   return (
-    <Text backgroundColor={color} color="inverseText" bold>
+    <Text backgroundColor={color} color={C.ink} bold>
       {' ' + label + ' '}
     </Text>
   )
 }
 
-/** Section title. */
-function title(Box: any, Text: any, label: string, hint?: string) {
+/** A rounded card with a colored border. */
+function card(Box: any, color: string, children: any, width?: number) {
   return (
-    <Box marginTop={1}>
-      <Text bold>{label}</Text>
-      {hint ? <Text dimColor>  {hint}</Text> : null}
+    <Box borderStyle="round" borderColor={color} paddingX={1} flexDirection="column" width={width} marginBottom={1}>
+      {children}
     </Box>
   )
 }
 
-/** Branches: one row each, in fixed columns (marker, name, rating, state, PR, blockers, age). */
-function branchesSection(rows: OverviewRow[], now: number, Box: any, Text: any) {
+/** Header of a collapsible section: a button with the fold marker, the title and a hint. */
+function foldHeader(Box: any, Text: any, Button: any, key: string, open: boolean, label: string, hint: string, color: string, toggle: () => void) {
   return (
-    <Box flexDirection="column">
-      {title(Box, Text, 'BRANCHES', 'latest run of each branch')}
-      {rows.length === 0 && <Text dimColor>No gate run found yet. This needs an authenticated gh in the project.</Text>}
-      {rows.length > 0 && (
+    <Box>
+      <Button key={key} label={`${open ? '▾' : '▸'} ${label}`} onPress={toggle} />
+      {hint ? <Text color={color}>  {hint}</Text> : null}
+    </Box>
+  )
+}
+
+/** One of the two side-by-side cards: the local run or the CI run, with its verdict at a glance. */
+function runCard(Box: any, Text: any, Button: any, key: string, label: string, g: GateReport | null, empty: string, selected: boolean, pick: () => void) {
+  const color = g ? ratingColor(g) : C.idle
+  return (
+    <Box borderStyle="round" borderColor={selected ? color : C.track} paddingX={1} flexDirection="column" width={52} marginRight={1}>
+      <Box>
+        <Button key={key} label={`${selected ? '◉' : '○'} ${label}`} onPress={pick} />
+        <Text>  </Text>
+        {g ? pill(Text, g.passed ? 'PASSED' : 'FAILED', color) : <Text color={C.idle}>{empty}</Text>}
+      </Box>
+      {g && (
         <Box>
-          {cell(Box, 2, <Text> </Text>)}
-          {cell(Box, 30, <Text dimColor>branch</Text>)}
-          {cell(Box, 9, <Text dimColor>rating</Text>)}
-          {cell(Box, 12, <Text dimColor>state</Text>)}
-          {cell(Box, 8, <Text dimColor>PR</Text>)}
-          {cell(Box, 11, <Text dimColor>blockers</Text>)}
-          {cell(Box, 5, <Text dimColor>age</Text>)}
+          <Text bold color={color}>{g.rating}  </Text>
+          <Text bold>{g.score}/100  </Text>
+          {scoreBar(Text, g.score, color, 20)}
         </Box>
       )}
-      {rows.map(row => {
-        const color = chipColor(row)
-        const state = row.status !== 'completed' ? row.status.replace('_', ' ') : row.passed === null ? row.conclusion || '?' : row.passed ? 'passed' : 'failed'
-        return (
-          <Box>
-            {cell(Box, 2, <Text color={color}>{row.isCurrent ? '▶' : ' '}</Text>)}
-            {cell(Box, 30, <Text bold={row.isCurrent} wrap="truncate-end">{row.branch}</Text>)}
-            {cell(Box, 9, row.rating !== '' ? pill(Text, `${row.rating} ${row.score}`, color) : <Text dimColor>–</Text>)}
-            {cell(Box, 12, <Text color={color}>{state}</Text>)}
-            {cell(Box, 8, <Text dimColor>{row.pr !== null ? `#${row.pr}` : ''}</Text>)}
-            {cell(Box, 11, <Text color="error">{row.blockers > 0 ? `${row.blockers} blocker${row.blockers > 1 ? 's' : ''}` : ''}</Text>)}
-            {cell(Box, 5, <Text dimColor>{ago(row.updatedAt, now)}</Text>)}
-          </Box>
-        )
-      })}
+      {g && (
+        <Text color={C.idle}>
+          {g.blockers.length} blocker{g.blockers.length === 1 ? '' : 's'} · {g.feedback.length} finding{g.feedback.length === 1 ? '' : 's'}
+          {g.sha ? ` · ${g.sha.slice(0, 7)}` : ''}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+/** Branches: a rounded card, one row each in fixed columns, the current branch highlighted, a button to ask for a branch's fix. */
+function branchesSection(rows: OverviewRow[], now: number, open: boolean, Box: any, Text: any, Button: any, $: any) {
+  const bad = rows.filter(r => r.passed === false || r.conclusion === 'failure').length
+  const good = rows.filter(r => r.passed === true).length
+  return (
+    <Box flexDirection="column">
+      {foldHeader(Box, Text, Button, 'fold-branches', open, 'BRANCHES', `${rows.length} · ${good} passing · ${bad} failing`, bad > 0 ? C.bad : C.ok, () => update($, branchesOpen, () => !open))}
+      {open && (
+        <Box borderStyle="round" borderColor={C.accent} paddingX={1} flexDirection="column" marginBottom={1}>
+          {rows.length === 0 && <Text dimColor>No gate run found yet. This needs an authenticated gh in the project.</Text>}
+          {rows.length > 0 && (
+            <Box>
+              {cell(Box, 2, <Text> </Text>)}
+              {cell(Box, 28, <Text color={C.info}>branch</Text>)}
+              {cell(Box, 9, <Text color={C.info}>rating</Text>)}
+              {cell(Box, 12, <Text color={C.info}>state</Text>)}
+              {cell(Box, 6, <Text color={C.info}>PR</Text>)}
+              {cell(Box, 11, <Text color={C.info}>blockers</Text>)}
+              {cell(Box, 5, <Text color={C.info}>age</Text>)}
+            </Box>
+          )}
+          {rows.map(row => {
+            const color = chipColor(row)
+            const state = row.status !== 'completed' ? row.status.replace('_', ' ') : row.passed === null ? row.conclusion || '?' : row.passed ? 'passed' : 'failed'
+            return (
+              <Box>
+                {cell(Box, 2, <Text color={color}>{row.isCurrent ? '▶' : '●'}</Text>)}
+                {cell(Box, 28, <Text bold={row.isCurrent} color={row.isCurrent ? C.accent : undefined} wrap="truncate-end">{row.branch}</Text>)}
+                {cell(Box, 9, row.rating !== '' ? pill(Text, `${row.rating} ${row.score}`, color) : <Text dimColor>–</Text>)}
+                {cell(Box, 12, <Text color={color}>{state}</Text>)}
+                {cell(Box, 6, <Text color={C.info}>{row.pr !== null ? `#${row.pr}` : ''}</Text>)}
+                {cell(Box, 11, <Text color={C.bad}>{row.blockers > 0 ? `${row.blockers} blocker${row.blockers > 1 ? 's' : ''}` : ''}</Text>)}
+                {cell(Box, 5, <Text dimColor>{ago(row.updatedAt, now)}</Text>)}
+                <Button
+                  key={`ask-${row.branch}`}
+                  label="→"
+                  onPress={() =>
+                    $.prompt.fill({
+                      text: `Show me the quality gate result of branch ${row.branch}${row.pr !== null ? ` (PR #${row.pr})` : ''} (run ${row.runId}) and, if it failed, use the api-coder agent on that branch to apply the fixes.`,
+                    })
+                  }
+                />
+              </Box>
+            )
+          })}
+        </Box>
+      )}
     </Box>
   )
 }
@@ -389,10 +445,10 @@ export const register: Register = on => {
       <Box>
         <Text bold>Gate  </Text>
         <Text dimColor>local </Text>
-        <Text bold color={lo ? ratingColor(lo) : 'inactive'}>{chip(lo)}</Text>
+        <Text bold color={lo ? ratingColor(lo) : C.idle}>{chip(lo)}</Text>
         <Text dimColor>   CI </Text>
-        <Text bold color={ciRep ? ratingColor(ciRep) : 'inactive'}>{ciState}</Text>
-        {differs && <Text color="warning"> ⚠ local and CI differ</Text>}
+        <Text bold color={ciRep ? ratingColor(ciRep) : C.idle}>{ciState}</Text>
+        {differs && <Text color={C.warn}> ⚠ local and CI differ</Text>}
         <Text dimColor>{prs.length > 0 ? `  PRs ${prOk}✔ ${prKo}✘` : ''}{others.length > 0 ? `  ${others.length} other branch${others.length > 1 ? 'es' : ''}` : ''}  </Text>
         <Button key="rerun" label="↻" onPress={() => $.prompt.submit({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
         <Button
@@ -414,84 +470,117 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
-    const r = await read($, report)
+    const auto = await read($, report)
+    const lo = await read($, local)
+    const ciRep = await read($, ciReport)
     const ci = await read($, run)
     const name = await read($, branch)
     const hint = await read($, note)
     const rowsAll = await read($, overview)
+    const pick = await read($, view)
+    const fixIsOpen = await read($, fixOpen)
+    const branchesIsOpen = await read($, branchesOpen)
     const now = await $.clock.now()
 
-    if (!r) {
+    if (!auto && !lo && !ciRep) {
       return (
         <Box flexDirection="column" paddingX={1}>
-          <Text bold>Quality gate</Text>
+          <Text bold color={C.accent}>Quality gate</Text>
           <Text dimColor>No report for {name || 'this branch'} yet. Run ./gate/run-all.sh, or push and wait for CI.</Text>
-          {hint !== '' && <Text color="warning">{hint}</Text>}
-          {branchesSection(rowsAll, now, Box, Text)}
+          {hint !== '' && <Text color={C.warn}>{hint}</Text>}
+          {branchesSection(rowsAll, now, branchesIsOpen, Box, Text, Button, $)}
         </Box>
       )
     }
 
-    const verdictColor = r.passed ? 'success' : 'error'
+    // The detail below follows the card the person picked; "auto" is the CI report of HEAD, else the local one.
+    const r = (pick === 'local' ? lo : pick === 'ci' ? ciRep : auto) ?? auto ?? lo ?? ciRep!
+    const shownKey = r.source === 'ci' ? 'ci' : 'local'
+    const verdictColor = ratingColor(r)
+    const ciEmpty = ci && ci.isHead && ci.status !== 'completed' ? `${ci.status.replace('_', ' ')}…` : ci ? 'no report for HEAD' : 'no CI run'
     const runLine = ci
       ? `CI run ${ci.id} · ${ci.status}${ci.conclusion ? '/' + ci.conclusion : ''}${ci.isHead ? '' : ' · older commit'}`
       : 'no CI run found'
-    const room = Math.max(3, (e.viewport?.rows ?? 30) - 28)
+    const room = Math.max(3, (e.viewport?.rows ?? 30) - 34)
+    const differs = lo && ciRep && (lo.score !== ciRep.score || lo.passed !== ciRep.passed)
 
     return (
       <Box flexDirection="column" paddingX={1}>
-        <Box borderStyle="round" borderColor={verdictColor} paddingX={1} flexDirection="column">
-          <Box>
-            {pill(Text, r.passed ? 'PASSED' : 'FAILED', verdictColor)}
-            <Text bold color={verdictColor}>  {r.rating}  </Text>
-            <Text bold>{r.score}/100  </Text>
-            {scoreBar(Text, r.score, verdictColor, 24)}
-          </Box>
-          <Text dimColor>
-            {name} · {r.source === 'ci' ? `ci@${(r.sha ?? '').slice(0, 7)}` : 'local run'} · {runLine}
-          </Text>
+        <Box>
+          <Text bold color={C.accent}>⬢ Quality gate  </Text>
+          <Text color={C.info}>{name}</Text>
+          <Text dimColor>  · {runLine}</Text>
         </Box>
 
         <Box marginTop={1}>
-          <Button key="fix" label="🔧" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
-          <Text> </Text>
-          <Button key="rerun" label="↻" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
+          {runCard(Box, Text, Button, 'pick-local', 'LOCAL', lo, 'no local run', shownKey === 'local', () => update($, view, () => 'local'))}
+          {runCard(Box, Text, Button, 'pick-ci', 'CI', ciRep, ciEmpty, shownKey === 'ci', () => update($, view, () => 'ci'))}
+        </Box>
+        {differs && <Text color={C.warn}>⚠ local and CI differ: push, or re-run the gate locally</Text>}
+
+        <Box>
+          <Button key="fix" label="🔧 fix" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
+          <Text>  </Text>
+          <Button key="rerun" label="↻ re-run" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
+          <Text>  </Text>
+          <Button key="auto" label="◎ auto" onPress={() => update($, view, () => 'auto')} />
         </Box>
 
-        {title(Box, Text, 'STEPS')}
-        {r.steps.map(s => (
-          <Box>
-            {cell(Box, 8, pill(Text, STATUS_LABEL[s.status], COLOR[s.status]))}
-            {cell(Box, 18, <Text>{s.step}</Text>)}
-            {cell(Box, 18, scoreBar(Text, s.score, COLOR[s.status], 14))}
-            {cell(Box, 12, <Text dimColor>{s.score === null ? 'not scored' : String(s.score)}</Text>)}
-          </Box>
-        ))}
+        {branchesSection(rowsAll, now, branchesIsOpen, Box, Text, Button, $)}
+
+        <Text bold color={C.accent}>STEPS <Text dimColor>({shownKey === 'ci' ? 'CI' : 'local'})</Text></Text>
+        {card(
+          Box,
+          verdictColor,
+          r.steps.map(s => (
+            <Box>
+              {cell(Box, 8, pill(Text, STATUS_LABEL[s.status], COLOR[s.status]))}
+              {cell(Box, 18, <Text>{s.step}</Text>)}
+              {cell(Box, 18, scoreBar(Text, s.score, COLOR[s.status], 14))}
+              {cell(Box, 12, <Text dimColor>{s.score === null ? 'not scored' : String(s.score)}</Text>)}
+            </Box>
+          )),
+        )}
 
         {r.blockers.length > 0 && (
           <Box flexDirection="column">
-            {title(Box, Text, 'BLOCKERS', 'the gate fails whatever the score')}
-            {r.blockers.map(b => <Text color="error">✘ {b}</Text>)}
+            <Text bold color={C.bad}>BLOCKERS <Text dimColor>the gate fails whatever the score</Text></Text>
+            {card(Box, C.bad, r.blockers.map(b => <Text color={C.bad}>✘ {b}</Text>))}
           </Box>
         )}
 
         {r.feedback.length > 0 && (
           <Box flexDirection="column">
-            {title(Box, Text, 'WHAT TO FIX', `${r.feedback.length} finding${r.feedback.length > 1 ? 's' : ''}, blockers first`)}
-            {r.feedback.slice(0, room).map((f, i) => (
-              <Box flexDirection="column" marginBottom={1}>
-                <Text>
-                  <Text bold>{i + 1}.</Text> {pill(Text, f.step, f.status === 'fail' ? 'error' : 'warning')} {f.finding}
-                </Text>
-                <Text dimColor>   → {f.fix}</Text>
-              </Box>
-            ))}
-            {r.feedback.length > room && <Text dimColor>… {r.feedback.length - room} more in gate-results/report.md</Text>}
+            {foldHeader(
+              Box,
+              Text,
+              Button,
+              'fold-fix',
+              fixIsOpen,
+              'WHAT TO FIX',
+              `${r.feedback.length} finding${r.feedback.length > 1 ? 's' : ''}, blockers first`,
+              C.warn,
+              () => update($, fixOpen, () => !fixIsOpen),
+            )}
+            {fixIsOpen &&
+              card(
+                Box,
+                C.warn,
+                <Box flexDirection="column">
+                  {r.feedback.slice(0, room).map((f, i) => (
+                    <Box flexDirection="column" marginBottom={1}>
+                      <Text>
+                        <Text bold color={C.accent}>{i + 1}.</Text> {pill(Text, f.step, f.status === 'fail' ? C.bad : C.warn)} {f.finding}
+                      </Text>
+                      <Text color={C.info}>   → {f.fix}</Text>
+                    </Box>
+                  ))}
+                  {r.feedback.length > room && <Text dimColor>… {r.feedback.length - room} more in gate-results/report.md</Text>}
+                </Box>,
+              )}
           </Box>
         )}
-
-        {branchesSection(rowsAll, now, Box, Text)}
-        {hint !== '' && <Text color="warning">{hint}</Text>}
+        {hint !== '' && <Text color={C.warn}>{hint}</Text>}
       </Box>
     )
   })

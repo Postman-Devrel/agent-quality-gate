@@ -5,6 +5,8 @@ A Claude Code mod that shows this repo's quality gate while you work, without le
 ## What it shows
 
 - **`/gate` (and `/gate-all`)**: one wide pane, docked beside the conversation where the surface allows it. It also tries to open at session start, after a `git push` or `gh pr create`, and when the CI run of the current commit finishes (the surface decides whether there is room). Columns are fixed-width cells and the score bars are colored runs of spaces, so the layout holds in a proportional font.
+  - **Local and CI cards**: side by side, click one to pick which report the detail below follows. Rounded cards, vibrant colors.
+  - **Collapsible sections**: BRANCHES and WHAT TO FIX fold with their `▾`/`▸` button; a `→` button per branch asks the agent about it.
   - **Branches and pull requests**: the latest finished run of the workflow per branch, with its rating, score, blockers, commit and open PR number; the current branch is marked.
   - **This branch**: the step table, the blockers and the "What to fix" findings.
   - **Buttons** (icons): 🔧 puts the fixes brief for api-coder in the prompt box (you read it, then Enter); ↻ puts the re-run command in the prompt box.
