@@ -45,6 +45,8 @@ export type OverviewRow = {
   blockers: number
   sha: string
   runId: number
+  /** ISO time the run was created. */
+  updatedAt: string
   isCurrent: boolean
 }
 

@@ -121,7 +121,7 @@ async function refresh($: any) {
   await update($, report, () => shown)
 
   // Status line and toast on a change of the CI run.
-  if (shown) $.ui.status(`Gate ${shown.rating} ${shown.score}${shown.passed ? '' : ' ✗'}`)
+  if (shown) $.ui.status(`Gate ${shown.rating} ${shown.score}${shown.passed ? '' : ' ✗'} · /gate`)
   const key = ci ? `${ci.id}:${ci.status}:${ci.conclusion}` : ''
   if (ci && ci.isHead && key !== lastRunKey) {
     if (lastRunKey !== '') {
@@ -214,6 +214,7 @@ async function refreshOverview($: any) {
       blockers: rep ? rep.blockers.length : 0,
       sha: String(r.headSha).slice(0, 7),
       runId: r.databaseId,
+      updatedAt: String(r.createdAt),
       isCurrent: r.headBranch === here,
     })
   }
@@ -221,24 +222,83 @@ async function refreshOverview($: any) {
   await update($, note, () => '')
 }
 
-/** The branches table: latest run per branch, with its rating and open PR. Pure drawing, no engine call. */
-function branchesTable(rows: OverviewRow[], Box: any, Text: any) {
-  if (rows.length === 0) {
-    return <Text dimColor>No gate run found yet. Needs an authenticated gh in this project.</Text>
-  }
+/** A score bar: filled and empty parts are runs of spaces on a background, so widths hold in any font. */
+function scoreBar(Text: any, score: number | null, color: string, width = 16) {
+  const n = score === null ? 0 : Math.max(0, Math.min(width, Math.round((score / 100) * width)))
+  return (
+    <Text>
+      <Text backgroundColor={color}>{' '.repeat(n)}</Text>
+      <Text backgroundColor="inactive">{' '.repeat(width - n)}</Text>
+    </Text>
+  )
+}
+
+/** A fixed-width cell: columns line up whatever the font (no padding with spaces). */
+function cell(Box: any, width: number, children: any) {
+  return (
+    <Box width={width} flexShrink={0}>
+      {children}
+    </Box>
+  )
+}
+
+/** "3m", "2h", "5d" since an ISO time. */
+const ago = (iso: string, now: number) => {
+  const s = Math.max(0, Math.round((now - Date.parse(iso)) / 1000))
+  return s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}m` : s < 129600 ? `${Math.round(s / 3600)}h` : `${Math.round(s / 86400)}d`
+}
+
+const STATUS_LABEL = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', not_available: 'N/A' } as const
+
+/** A colored pill: text on a solid background. */
+function pill(Text: any, label: string, color: string) {
+  return (
+    <Text backgroundColor={color} color="inverseText" bold>
+      {' ' + label + ' '}
+    </Text>
+  )
+}
+
+/** Section title. */
+function title(Box: any, Text: any, label: string, hint?: string) {
+  return (
+    <Box marginTop={1}>
+      <Text bold>{label}</Text>
+      {hint ? <Text dimColor>  {hint}</Text> : null}
+    </Box>
+  )
+}
+
+/** Branches: one row each, in fixed columns (marker, name, rating, state, PR, blockers, age). */
+function branchesSection(rows: OverviewRow[], now: number, Box: any, Text: any) {
   return (
     <Box flexDirection="column">
-      <Text bold>Branches and pull requests</Text>
-      <Text dimColor>latest run per branch</Text>
+      {title(Box, Text, 'BRANCHES', 'latest run of each branch')}
+      {rows.length === 0 && <Text dimColor>No gate run found yet. This needs an authenticated gh in the project.</Text>}
+      {rows.length > 0 && (
+        <Box>
+          {cell(Box, 2, <Text> </Text>)}
+          {cell(Box, 30, <Text dimColor>branch</Text>)}
+          {cell(Box, 9, <Text dimColor>rating</Text>)}
+          {cell(Box, 12, <Text dimColor>state</Text>)}
+          {cell(Box, 8, <Text dimColor>PR</Text>)}
+          {cell(Box, 11, <Text dimColor>blockers</Text>)}
+          {cell(Box, 5, <Text dimColor>age</Text>)}
+        </Box>
+      )}
       {rows.map(row => {
         const color = chipColor(row)
-        const state = row.status !== 'completed' ? row.status : row.passed === null ? row.conclusion || '?' : row.passed ? 'PASSED' : 'FAILED'
+        const state = row.status !== 'completed' ? row.status.replace('_', ' ') : row.passed === null ? row.conclusion || '?' : row.passed ? 'passed' : 'failed'
         return (
-          <Text color={color}>
-            {row.isCurrent ? '▶' : ' '} {row.branch.padEnd(28).slice(0, 28)} {(row.pr !== null ? '#' + row.pr : '-').padEnd(4)} {state.padEnd(10)}
-            {row.rating !== '' ? ` ${row.rating} ${row.score}/100` : ''}
-            {row.blockers > 0 ? `  ${row.blockers} blocker(s)` : ''}  {row.sha}
-          </Text>
+          <Box>
+            {cell(Box, 2, <Text color={color}>{row.isCurrent ? '▶' : ' '}</Text>)}
+            {cell(Box, 30, <Text bold={row.isCurrent} wrap="truncate-end">{row.branch}</Text>)}
+            {cell(Box, 9, row.rating !== '' ? pill(Text, `${row.rating} ${row.score}`, color) : <Text dimColor>–</Text>)}
+            {cell(Box, 12, <Text color={color}>{state}</Text>)}
+            {cell(Box, 8, <Text dimColor>{row.pr !== null ? `#${row.pr}` : ''}</Text>)}
+            {cell(Box, 11, <Text color="error">{row.blockers > 0 ? `${row.blockers} blocker${row.blockers > 1 ? 's' : ''}` : ''}</Text>)}
+            {cell(Box, 5, <Text dimColor>{ago(row.updatedAt, now)}</Text>)}
+          </Box>
         )
       })}
     </Box>
@@ -279,13 +339,17 @@ export const register: Register = on => {
   // A tool call that may have changed the gate result: refresh soon after a local gate run or a push.
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const result = await next(e)
-    if (/gate\/|run-all|git push/.test(String((e as any).command ?? ''))) void refresh($)
+    if (/gate\/|run-all|git push|gh pr create/.test(String((e as any).command ?? ''))) {
+      void refresh($)
+      void $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })
+    }
     return result
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const r = await read($, report)
     const rows = await read($, overview)
+    const curName = await read($, branch)
     const problem = await read($, note)
     // Nothing to show only when there is neither a report, nor another branch, nor a problem to report.
     if (e.props.hasSurvey || (!r && rows.length === 0 && problem === '') || (await read($, isHidden))) return next(e)
@@ -297,43 +361,25 @@ export const register: Register = on => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const sha = !r ? '' : r.source === 'ci' ? ` ci@${(r.sha ?? '').slice(0, 7)}` : ' local'
     const pending = ci && ci.isHead && ci.status !== 'completed' ? ` · CI ${ci.status}…` : ''
+    const label = r ? `${r.passed ? '✔' : '✘'} Gate ${r.rating} ${r.score}/100` : 'Gate'
     return (
-      <Box flexDirection="column">
-      {r && (
       <Box>
-        <Text bold color={ratingColor(r)}>
-          {r.passed ? '✔' : '✘'} Gate {r.rating} {r.score}/100
-        </Text>
-        <Text dimColor>{sha}{pending}  </Text>
-        {r.steps.map(s => (
-          <Text color={COLOR[s.status]}>
-            {ICON[s.status]} {SHORT[s.step] ?? s.step}{' '}
-          </Text>
-        ))}
-        {r.blockers.length > 0 && <Text color="error"> blockers: {r.blockers.length} </Text>}
-        {prs.length > 0 && (
-          <Text dimColor>
-            {' '}PRs: {prOk > 0 && <Text color="success">{prOk}✔ </Text>}{prKo > 0 && <Text color="error">{prKo}✘ </Text>}
-          </Text>
-        )}
+        <Text bold color={r ? ratingColor(r) : 'inactive'}>{label}</Text>
+        <Text dimColor>{prs.length > 0 ? `  PRs ${prOk}✔ ${prKo}✘` : ''}{others.length > 0 ? `  ${others.length} other branch${others.length > 1 ? 'es' : ''}` : ''}  </Text>
+        <Button key="rerun" label="Re-run gate" onPress={() => $.prompt.submit({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
+        <Button
+          key="fix"
+          label="Ask for a fix"
+          onPress={() => {
+            if (!r || r.feedback.length === 0) {
+              $.ui.toast(r ? 'The gate has nothing to fix.' : 'No gate report yet: re-run the gate first.')
+              return
+            }
+            return $.prompt.submit({ text: fixesPrompt(r, curName) })
+          }}
+        />
+        <Button key="open" label="Open panel" onPress={() => $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })} />
         <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
-      </Box>
-      )}
-      {others.length === 0 && problem !== '' && (
-        <Box>
-          <Text color="warning">{problem}</Text>
-        </Box>
-      )}
-      {others.length > 0 && (
-        <Box>
-          <Text dimColor>branches </Text>
-          {others.map(o => (
-            <Text color={chipColor(o)}>
-              {o.branch.slice(0, 22)}{o.pr !== null ? ` #${o.pr}` : ''} {chipLabel(o)}{'  '}
-            </Text>
-          ))}
-        </Box>
-      )}
       </Box>
     )
   })
@@ -345,59 +391,78 @@ export const register: Register = on => {
     const name = await read($, branch)
     const hint = await read($, note)
     const rowsAll = await read($, overview)
+    const now = await $.clock.now()
+
     if (!r) {
       return (
-        <Box flexDirection="column">
-          {branchesTable(rowsAll, Box, Text)}
-          <Text> </Text>
-          <Text dimColor>No gate report yet on {name || 'this branch'}. Run ./gate/run-all.sh, or push and wait for the CI run.</Text>
+        <Box flexDirection="column" paddingX={1}>
+          <Text bold>Quality gate</Text>
+          <Text dimColor>No report for {name || 'this branch'} yet. Run ./gate/run-all.sh, or push and wait for CI.</Text>
           {hint !== '' && <Text color="warning">{hint}</Text>}
+          {branchesSection(rowsAll, now, Box, Text)}
         </Box>
       )
     }
-    const room = Math.max(3, (e.viewport?.rows ?? 24) - 22)
+
+    const verdictColor = r.passed ? 'success' : 'error'
+    const runLine = ci
+      ? `CI run ${ci.id} · ${ci.status}${ci.conclusion ? '/' + ci.conclusion : ''}${ci.isHead ? '' : ' · older commit'}`
+      : 'no CI run found'
+    const room = Math.max(3, (e.viewport?.rows ?? 30) - 28)
+
     return (
-      <Box flexDirection="column">
-        <Box>
+      <Box flexDirection="column" paddingX={1}>
+        <Box borderStyle="round" borderColor={verdictColor} paddingX={1} flexDirection="column">
+          <Box>
+            {pill(Text, r.passed ? 'PASSED' : 'FAILED', verdictColor)}
+            <Text bold color={verdictColor}>  {r.rating}  </Text>
+            <Text bold>{r.score}/100  </Text>
+            {scoreBar(Text, r.score, verdictColor, 24)}
+          </Box>
+          <Text dimColor>
+            {name} · {r.source === 'ci' ? `ci@${(r.sha ?? '').slice(0, 7)}` : 'local run'} · {runLine}
+          </Text>
+        </Box>
+
+        <Box marginTop={1}>
           <Button key="fix" label="Send fixes to api-coder" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
+          <Text> </Text>
           <Button key="rerun" label="Re-run the gate" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
         </Box>
-        <Text> </Text>
-        {branchesTable(rowsAll, Box, Text)}
-        <Text> </Text>
-        <Text bold>This branch ({name})</Text>
-        <Text bold color={ratingColor(r)}>
-          {r.passed ? 'PASSED' : 'FAILED'}  rating {r.rating}  {r.score}/100
-        </Text>
-        <Text dimColor>
-          branch {name} · report {r.source === 'ci' ? `from CI (commit ${(r.sha ?? '').slice(0, 7)})` : 'from the local gate run'}
-          {ci ? ` · CI run ${ci.id}: ${ci.status}${ci.conclusion ? '/' + ci.conclusion : ''}${ci.isHead ? '' : ' (older commit)'}` : ''}
-        </Text>
-        <Text> </Text>
+
+        {title(Box, Text, 'STEPS')}
         {r.steps.map(s => (
-          <Text color={COLOR[s.status]}>
-            {ICON[s.status]} {s.step.padEnd(14)} {s.status.padEnd(14)} {s.score ?? '-'}
-          </Text>
+          <Box>
+            {cell(Box, 8, pill(Text, STATUS_LABEL[s.status], COLOR[s.status]))}
+            {cell(Box, 18, <Text>{s.step}</Text>)}
+            {cell(Box, 18, scoreBar(Text, s.score, COLOR[s.status], 14))}
+            {cell(Box, 12, <Text dimColor>{s.score === null ? 'not scored' : String(s.score)}</Text>)}
+          </Box>
         ))}
+
         {r.blockers.length > 0 && (
           <Box flexDirection="column">
-            <Text> </Text>
-            <Text bold color="error">Blockers</Text>
-            {r.blockers.map(b => <Text color="error">- {b}</Text>)}
+            {title(Box, Text, 'BLOCKERS', 'the gate fails whatever the score')}
+            {r.blockers.map(b => <Text color="error">✘ {b}</Text>)}
           </Box>
         )}
+
         {r.feedback.length > 0 && (
           <Box flexDirection="column">
-            <Text> </Text>
-            <Text bold>What to fix</Text>
+            {title(Box, Text, 'WHAT TO FIX', `${r.feedback.length} finding${r.feedback.length > 1 ? 's' : ''}, blockers first`)}
             {r.feedback.slice(0, room).map((f, i) => (
-              <Text>
-                {i + 1}. [{f.step}] {f.finding}
-              </Text>
+              <Box flexDirection="column" marginBottom={1}>
+                <Text>
+                  <Text bold>{i + 1}.</Text> {pill(Text, f.step, f.status === 'fail' ? 'error' : 'warning')} {f.finding}
+                </Text>
+                <Text dimColor>   → {f.fix}</Text>
+              </Box>
             ))}
             {r.feedback.length > room && <Text dimColor>… {r.feedback.length - room} more in gate-results/report.md</Text>}
           </Box>
         )}
+
+        {branchesSection(rowsAll, now, Box, Text)}
         {hint !== '' && <Text color="warning">{hint}</Text>}
       </Box>
     )
