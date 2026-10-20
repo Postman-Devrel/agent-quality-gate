@@ -111,7 +111,7 @@ The two-agent demo (a coder agent pushes a change, the gate runs in CI, a review
 Stated plainly, because a gate you cannot trust is worse than none.
 
 - **`skills-check` works around a Postman CLI bug.** In CLI 1.73.0 and 1.75.0, `postman skills status` answers `foreign` as soon as `postman/skills` holds a `.py` file, and the skills ship two of them. The step checks a temporary copy without `.py` files and ignores those two. It checks the skills committed in the repo, not the version of the agent plugin (`claude plugin update postman`).
-- **Impact depends on an LLM.** `context-graph ask` returns free text. The step asks for JSON only and retries an empty answer up to 3 times, but it can still miss a consumer. "Breaking" is a heuristic on the contract diff (removed or renamed property or path, changed `required:` list), not a real compatibility check.
+- **Impact depends on an LLM.** `context-graph ask` returns free text. The step asks for JSON only and retries an empty answer up to 3 times, but it can still miss a consumer. "Breaking" comes from a structural diff of the contract against the base branch (removed or renamed path, response or property, changed type, stricter request); it does not see behaviour changes the contract does not describe.
 - **Impact needs the Context Graph of the right team.** The graph must hold `appointments-service` (ingested from `healthcare-org-app/healthcare-appointments`), and `POSTMAN_API_KEY` must belong to that team.
 - **Contract lint does not catch breaking changes.** No built-in governance rule flags a rename or a new required field.
 - **Collection `baseUrl` is the local server** (`http://localhost:8080`), not the production server of the spec: the gate always redirects it to a generated mock.

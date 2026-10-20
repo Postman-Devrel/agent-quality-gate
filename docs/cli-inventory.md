@@ -43,7 +43,7 @@ The plugin is updated with `claude plugin update postman` (named in the CLI help
 - `postman context-graph ask` is answered by an LLM service: free text plus citations; `provenance` only echoes the typed query, not its result. There is no structured consumer list and no breaking flag.
 - The team is derived from the API key. With the key of the team that ingested `healthcare-org-app/healthcare-appointments`, the question "Which services consume or depend on appointments-service?" returns `patients-service` (`GET /api/appointments/`, confidence 0.9).
 - The gate asks for a **JSON-only** answer (`[{name, endpoint, protocol, confidence}]`). It came back as `[]` once in four runs, so `05-impact.sh` retries empty answers up to 3 times.
-- "Breaking" does **not** come from the Context Graph: it is a heuristic on `git diff <base> -- contract/openapi.yaml` (removed or renamed property or path, changed `required:` list). Breaking plus at least one consumer is a hard blocker.
+- "Breaking" does **not** come from the Context Graph: `gate/lib/contract-diff.py` compares the contract with the base branch structurally (removed or renamed path, response or property, changed type, a request that became stricter). Additions, including a new schema with its own `required` list, are not breaking. Without PyYAML it falls back to a line heuristic. Breaking plus at least one consumer is a hard blocker.
 - Mismatch to keep in mind: the consumers are those of `appointments-service` (set with `IMPACT_API`), not of the demo Appointments API, which the graph does not know.
 - Needs the `POSTMAN_API_KEY` of the team holding the ingestion; without it the step is `not_available`.
 
