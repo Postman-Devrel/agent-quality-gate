@@ -4,8 +4,7 @@
 name: quality-gate
 
 on:
-  push:
-    branches-ignore: [main] # a coding agent pushes a branch: the gate runs without waiting for a PR
+  push: # every branch, main included: an agent's push is judged without waiting for a PR, and merges are re-checked
   pull_request:
   workflow_dispatch:
 
