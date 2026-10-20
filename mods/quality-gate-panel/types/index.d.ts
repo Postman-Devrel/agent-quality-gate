@@ -54,6 +54,8 @@ declare module 'claude-code' {
   interface PluginState {
     'quality-gate-panel': {
       report: GateReport | null
+      local: GateReport | null
+      ciReport: GateReport | null
       run: CiRun | null
       branch: string
       note: string

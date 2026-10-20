@@ -10,6 +10,8 @@ const MAX_DOWNLOADS = 5
 const POLL_MS = 20000
 
 const report = atom({ plugin: 'quality-gate-panel', key: 'report' } as const, null)
+const local = atom({ plugin: 'quality-gate-panel', key: 'local' } as const, null)
+const ciReport = atom({ plugin: 'quality-gate-panel', key: 'ciReport' } as const, null)
 const run = atom({ plugin: 'quality-gate-panel', key: 'run' } as const, null)
 const branch = atom({ plugin: 'quality-gate-panel', key: 'branch' } as const, '')
 const note = atom({ plugin: 'quality-gate-panel', key: 'note' } as const, '')
@@ -89,8 +91,8 @@ async function refresh($: any) {
   await update($, branch, () => name)
 
   // Local report: written by ./gate/run-all.sh, instant feedback for the coding agent.
-  const local = await readReport($, 'gate-results/report.json', 'local')
-  let shown: GateReport | null = local
+  const localReport = await readReport($, 'gate-results/report.json', 'local')
+  let shown: GateReport | null = localReport
 
   // CI: the latest run of the workflow on this branch. Authoritative when it is for HEAD.
   const list = await ghRun($, ['run', 'list', '--workflow', 'quality-gate', '--branch', name, '--limit', '1', '--json', 'databaseId,status,conclusion,headSha,url'], 20000).catch(() => null)
@@ -109,6 +111,7 @@ async function refresh($: any) {
   await update($, run, () => ci)
 
   // Download the report of a finished CI run for the current commit.
+  let fromCi: GateReport | null = null
   if (ci && ci.isHead && ci.status === 'completed') {
     const dir = `gate-results/ci/${ci.id}`
     const path = `${dir}/report.json`
@@ -117,8 +120,11 @@ async function refresh($: any) {
     }
     const remote = await readReport($, path, 'ci', ci.sha)
     if (remote) shown = remote
+    fromCi = remote
   }
   await update($, report, () => shown)
+  await update($, local, () => localReport)
+  await update($, ciReport, () => fromCi)
 
   // Status line and toast on a change of the CI run.
   if (shown) $.ui.status(`Gate ${shown.rating} ${shown.score}${shown.passed ? '' : ' ✗'} · /gate`)
@@ -361,10 +367,20 @@ export const register: Register = on => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const sha = !r ? '' : r.source === 'ci' ? ` ci@${(r.sha ?? '').slice(0, 7)}` : ' local'
     const pending = ci && ci.isHead && ci.status !== 'completed' ? ` · CI ${ci.status}…` : ''
-    const label = r ? `${r.passed ? '✔' : '✘'} Gate ${r.rating} ${r.score}/100` : 'Gate'
+    const lo = await read($, local)
+    const ciRep = await read($, ciReport)
+    const ciRun = await read($, run)
+    const chip = (g: GateReport | null) => (g ? `${g.passed ? '✔' : '✘'} ${g.rating} ${g.score}` : '–')
+    const ciState = ciRep ? chip(ciRep) : ciRun && ciRun.isHead && ciRun.status !== 'completed' ? `${ciRun.status.replace('_', ' ')}…` : '–'
+    const differs = lo && ciRep && (lo.score !== ciRep.score || lo.passed !== ciRep.passed)
     return (
       <Box>
-        <Text bold color={r ? ratingColor(r) : 'inactive'}>{label}</Text>
+        <Text bold>Gate  </Text>
+        <Text dimColor>local </Text>
+        <Text bold color={lo ? ratingColor(lo) : 'inactive'}>{chip(lo)}</Text>
+        <Text dimColor>   CI </Text>
+        <Text bold color={ciRep ? ratingColor(ciRep) : 'inactive'}>{ciState}</Text>
+        {differs && <Text color="warning"> ⚠ local and CI differ</Text>}
         <Text dimColor>{prs.length > 0 ? `  PRs ${prOk}✔ ${prKo}✘` : ''}{others.length > 0 ? `  ${others.length} other branch${others.length > 1 ? 'es' : ''}` : ''}  </Text>
         <Button key="rerun" label="Re-run gate" onPress={() => $.prompt.submit({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
         <Button
