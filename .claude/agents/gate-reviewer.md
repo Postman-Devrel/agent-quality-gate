@@ -14,7 +14,8 @@ Input: a branch name and the commit SHA the coder pushed. The repository is `Pos
    `gh run list -R Postman-Devrel/agent-quality-gate --workflow quality-gate --branch <branch> --json databaseId,headSha,status,conclusion,event --limit 10`
    Wait if it is `queued` or `in_progress`: `gh run watch <id> -R Postman-Devrel/agent-quality-gate --interval 10` (stop waiting after 10 minutes and say so).
 2. Download the report: `gh run download <id> -R Postman-Devrel/agent-quality-gate -n gate-report -D <tmpdir>`. Read `report.json` (fields: `passed`, `score`, `rating`, `blockers`, `feedback[]`, `steps[]`) and `report.md`.
-3. If a step is `not_available`, say so and do not count it as good news.
+3. If `report.json` is `{ "skipped": true, ... }`, the gate decided that no file it judges changed in this branch. Report `GATE SKIPPED (no relevant change)` with the run id and commit, no fixes, and stop.
+4. If a step is `not_available`, say so and do not count it as good news.
 
 ## Output (exactly this structure)
 

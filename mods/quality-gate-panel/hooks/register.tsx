@@ -162,6 +162,17 @@ function nextPrompt(r: GateReport, branchName: string): string {
     : fixesPrompt(r, branchName)
 }
 
+/** True when the report file is the marker of a run the gate skipped (no relevant file changed). */
+async function isSkipped($: any, path: string) {
+  try {
+    if (!(await $.fs.exists(path))) return false
+    const file = await $.fs.read(path)
+    return JSON.parse(typeof file === 'string' ? file : file.text).skipped === true
+  } catch {
+    return false
+  }
+}
+
 /**
  * One row per recent branch: the latest non-cancelled run of the workflow, its rating (from the
  * gate-report artifact, downloaded once and cached under gate-results/ci/) and its open PR.
@@ -207,13 +218,14 @@ async function refreshOverview($: any) {
       await ghRun($, ['run', 'download', String(r.databaseId), '-n', 'gate-report', '-D', dir], 60000).catch(() => null)
     }
     const rep = r.status === 'completed' ? await readReport($, path, 'ci', r.headSha) : null
+    const skipped = r.status === 'completed' && !rep && (await isSkipped($, path))
     const pr = prByBranch[r.headBranch]
     rows.push({
       branch: r.headBranch,
       pr: pr ? pr.number : null,
       title: pr ? pr.title : '',
       status: r.status,
-      conclusion: r.conclusion || '',
+      conclusion: skipped ? 'skipped' : r.conclusion || '',
       rating: rep ? rep.rating : '',
       score: rep ? rep.score : null,
       passed: rep ? rep.passed : null,
