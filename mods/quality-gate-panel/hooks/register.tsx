@@ -394,10 +394,10 @@ export const register: Register = on => {
         <Text bold color={ciRep ? ratingColor(ciRep) : 'inactive'}>{ciState}</Text>
         {differs && <Text color="warning"> ⚠ local and CI differ</Text>}
         <Text dimColor>{prs.length > 0 ? `  PRs ${prOk}✔ ${prKo}✘` : ''}{others.length > 0 ? `  ${others.length} other branch${others.length > 1 ? 'es' : ''}` : ''}  </Text>
-        <Button key="rerun" label="Re-run gate" onPress={() => $.prompt.submit({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
+        <Button key="rerun" label="↻" onPress={() => $.prompt.submit({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
         <Button
           key="fix"
-          label="Ask for a fix"
+          label="🔧"
           onPress={() => {
             if (!r || r.feedback.length === 0) {
               $.ui.toast(r ? 'The gate has nothing to fix.' : 'No gate report yet: re-run the gate first.')
@@ -406,8 +406,8 @@ export const register: Register = on => {
             return $.prompt.submit({ text: fixesPrompt(r, curName) })
           }}
         />
-        <Button key="open" label="Open panel" onPress={() => $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })} />
-        <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
+        <Button key="open" label="⧉" onPress={() => $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })} />
+        <Button key="hide" label="✕" onPress={() => update($, isHidden, () => true)} />
       </Box>
     )
   })
@@ -453,9 +453,9 @@ export const register: Register = on => {
         </Box>
 
         <Box marginTop={1}>
-          <Button key="fix" label="Send fixes to api-coder" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
+          <Button key="fix" label="🔧" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
           <Text> </Text>
-          <Button key="rerun" label="Re-run the gate" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
+          <Button key="rerun" label="↻" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
         </Box>
 
         {title(Box, Text, 'STEPS')}

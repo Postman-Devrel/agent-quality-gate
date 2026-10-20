@@ -7,8 +7,8 @@ A Claude Code mod that shows this repo's quality gate while you work, without le
 - **`/gate` (and `/gate-all`)**: one wide pane, docked beside the conversation where the surface allows it. It also tries to open at session start, after a `git push` or `gh pr create`, and when the CI run of the current commit finishes (the surface decides whether there is room). Columns are fixed-width cells and the score bars are colored runs of spaces, so the layout holds in a proportional font.
   - **Branches and pull requests**: the latest finished run of the workflow per branch, with its rating, score, blockers, commit and open PR number; the current branch is marked.
   - **This branch**: the step table, the blockers and the "What to fix" findings.
-  - **Buttons**: *Send fixes to api-coder* puts the fixes brief in the prompt box (you read it, then Enter); *Re-run the gate* puts the command in the prompt box.
-- **A band above the prompt** (`/gate-band`, off by default): the local score and the CI score side by side (with a warning when they differ), PR counts and four buttons: *Re-run gate* and *Ask for a fix* send the matching prompt to the agent at once, *Open panel* opens the pane, *Hide* hides the band.
+  - **Buttons** (icons): 🔧 puts the fixes brief for api-coder in the prompt box (you read it, then Enter); ↻ puts the re-run command in the prompt box.
+- **A band above the prompt** (`/gate-band`, off by default): the local score and the CI score side by side (with a warning when they differ), PR counts and four icon buttons: ↻ (re-run the gate) and 🔧 (ask for a fix) send the matching prompt to the agent at once, ⧉ opens the pane, ✕ hides the band.
 - **Toasts and a prompt suggestion** when the CI run for the checked-out commit finishes. The suggested next prompt (apply the fixes, or summarize and open a PR) is only proposed; Tab takes it.
 - **Status line**: `Gate A 93`.
 
