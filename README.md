@@ -39,7 +39,7 @@ Five steps. Each runs one Postman CLI command (plus minimal glue) and writes `ga
 
 | # | Step | Command | What it checks |
 |---|------|---------|----------------|
-| 1 | `skills-check` | `postman skills status --json` | the Postman skills committed in the repo are current (works around a CLI bug, see below) |
+| 1 | `skills-check` | `postman skills status --json` | the Postman skills committed in the repo are current (`not_available` today because of a CLI bug, see below) |
 | 2 | `contract-lint` | `postman spec lint contract/openapi.yaml -o json` | the contract against Postman governance rules |
 | 3 | `tests` | `./mvnw test`, `postman collection run … --use-mock …` | JUnit; the collection replayed against a mock **generated from the current contract**; every contract operation has a request in the collection |
 | 4 | `ai-readiness` | `postman spec ai-readiness contract/openapi.yaml -o json` | how well an agent can discover, understand and call the API |
@@ -96,7 +96,7 @@ The Postman plugin handles everything Postman for the agents (`npx @postman/post
 
 ## Known limits
 
-- **`skills-check` works around a Postman CLI bug.** In CLI 1.73.0 and 1.75.0, `postman skills status` answers `foreign` as soon as `postman/skills` holds a `.py` file, and the skills ship two of them. The step checks a temporary copy without `.py` files and ignores those two. It checks the skills committed in the repo, not the version of the agent plugin.
+- **`skills-check` is `not_available`.** In Postman CLI 1.73.0 and 1.75.0, `postman skills status` answers `foreign` as soon as `postman/skills` holds a `.py` file, and the skills ship two of them (`performance-testing/.../scripts/*.py`). Reported to the Postman CLI team; the step stays `not_available` (excluded from the score, shown in grey) until it is fixed. A workaround exists on the branch `fix/skills-check-py-workaround`. The step checks the skills committed in the repo, not the version of the agent plugin.
 - **Impact depends on an LLM.** `context-graph ask` returns free text. The step asks for JSON only and retries an empty answer up to 3 times, but it can still miss a consumer. "Breaking" comes from a structural diff of the contract against the base branch (removed or renamed path, response or property, changed type, stricter request); it does not see behaviour the contract does not describe.
 - **The Context Graph must know the API.** The graph of the team behind `POSTMAN_API_KEY` must hold `appointments-service`.
 - **Contract lint does not detect breaking changes.** No built-in governance rule flags a rename or a new required field. Steps 3 and 5 cover that.
