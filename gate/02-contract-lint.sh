@@ -14,7 +14,9 @@ if ! jq -e '.violations' "$out" >/dev/null 2>&1; then
   not_available "lint produced no JSON output" "$CMD"; exit 0
 fi
 
-jq '.violations' "$out" > "$details"
+# Each violation gets a "hint" for the coding agent (check, result, hint are the common fields).
+jq '[.violations[] | . + {check: "lint", result: ((.severity|tostring) + " at " + (.path // "?") + ": " + (.issue // "")),
+  hint: ("Fix the contract at " + (.path // "?") + " (line " + ((.["line number"] // "?")|tostring) + "): " + (.issue // "") + " Then run ./gate/02-contract-lint.sh.")}]' "$out" > "$details"
 errors="$(jq '[.[] | select((.severity|tostring|ascii_downcase) == "error" or .severity == 0)] | length' "$details")"
 warnings="$(jq '[.[] | select((.severity|tostring|ascii_downcase) == "warning" or .severity == 1)] | length' "$details")"
 other="$(jq 'length' "$details")"; other=$((other - errors - warnings))

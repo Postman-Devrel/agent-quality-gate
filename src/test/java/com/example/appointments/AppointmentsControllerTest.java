@@ -55,6 +55,20 @@ class AppointmentsControllerTest {
     }
 
     @Test
+    void requestIdIsEchoedOrGenerated() throws Exception {
+        mvc.perform(get("/health").header("X-Request-Id", "demo-123"))
+                .andExpect(header().string("X-Request-Id", "demo-123"));
+        mvc.perform(get("/health")).andExpect(header().exists("X-Request-Id"));
+    }
+
+    @Test
+    void statusFilterWorks() throws Exception {
+        mvc.perform(get("/api/appointments?status=cancelled"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items[0].status").value("cancelled"));
+    }
+
+    @Test
     void healthIsOk() throws Exception {
         mvc.perform(get("/health")).andExpect(jsonPath("$.status").value("ok"));
     }

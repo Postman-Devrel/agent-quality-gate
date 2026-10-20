@@ -72,6 +72,17 @@ if (!counted.length) blockers.push('No step produced a usable result');
 const minIndex = LETTERS.indexOf(cfg.pass_rating);
 const passed = blockers.length === 0 && LETTERS.indexOf(rating) <= minIndex;
 
+// --- 4b. Feedback for the coding agent ---------------------------------------------
+// One entry per finding of a step that is not green. "hint" says how to fix it.
+const feedback = [];
+for (const s of steps.filter((x) => ['warn', 'fail'].includes(x.status))) {
+  const items = (s.details || []).filter((d) => d && (d.hint || d.result));
+  const useful = items.filter((d) => d.hint);
+  for (const d of (useful.length ? useful : [{ result: s.summary }]).slice(0, 8)) {
+    feedback.push({ step: s.step, status: s.status, finding: d.result || s.summary, fix: d.hint || 'See the step summary.' });
+  }
+}
+
 // --- 5. Markdown report -----------------------------------------------------------
 const ICON = { pass: '🟢', warn: '🟠', fail: '🔴', not_available: '⚪' };
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
@@ -99,6 +110,10 @@ if (skipped.length) {
   lines.push('### Not available (excluded from the score, never counted as a pass)', '',
     ...skipped.map((s) => `- ⚪ **${s.step}**: ${s.summary}`), '');
 }
+if (feedback.length) {
+  lines.push('### What to fix (for the coding agent)', '',
+    ...feedback.map((f, i) => `${i + 1}. **${f.step}** (${f.status}): ${cell(f.finding)}  \n   Fix: ${cell(f.fix)}`), '');
+}
 for (const s of steps.filter((x) => ['warn', 'fail'].includes(x.status) && (x.details || []).length)) {
   lines.push(`<details><summary>${ICON[s.status]} ${s.step}: details</summary>`, '', '```json',
     JSON.stringify(s.details, null, 2).slice(0, 3000), '```', '', '</details>', '');
@@ -109,7 +124,7 @@ const markdown = lines.join('\n');
 fs.mkdirSync(resultsDir, { recursive: true });
 fs.writeFileSync(path.join(resultsDir, 'report.md'), markdown);
 fs.writeFileSync(path.join(resultsDir, 'report.json'),
-  JSON.stringify({ passed, score, rating, blockers, steps: steps.map(({ step, status, score: sc }) => ({ step, status, score: sc })) }, null, 2));
+  JSON.stringify({ passed, score, rating, blockers, feedback, steps: steps.map(({ step, status, score: sc }) => ({ step, status, score: sc })) }, null, 2));
 if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, markdown + '\n');
 console.log(markdown);
 

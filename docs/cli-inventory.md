@@ -19,8 +19,8 @@ Nothing here is guessed. "Verified" means the command was executed; "Docs" cross
 `postman skills status` compares the skills **committed in `postman/skills/`** against the published ones. It does **not** check the Claude Code plugin version.
 The plugin is updated with `claude plugin update postman` (named in the CLI help), which cannot run in CI.
 - Gate design: score the repo skills with `skills status` (verified); report the plugin version as informational only.
-- **Blocker found while writing the script:** on a pristine `git init && postman init` repo (CLI 1.73.0 and 1.75.0), `postman skills status` answers `foreign` (exit 1) and `postman skills update` refuses with exit 4, as if the 45 skill files that `init` just wrote were "source files". It only reports `behind/missing` when the skills folder holds no files, or when given `postman/skills` as the path. Looks like a CLI bug; not worked around.
-- Gate design: `01-skills-check.sh` maps `current` to pass, `behind`/`modified`/`unknown` to warn, and anything else (including `foreign`) to `not_available`. **Today it reports `not_available` in this repo.**
+- **CLI bug, root cause found:** on a pristine `git init && postman init` repo (CLI 1.73.0 and 1.75.0), `postman skills status` answers `foreign` (exit 1) and `postman skills update` refuses with exit 4. The cause is the two `.py` files that ship with the skills (`performance-testing/references/jmeter-import/scripts/`): the CLI counts them as "source files". Deleting them gives `behind`; `skills update` brings them back and breaks it again.
+- Gate design: `01-skills-check.sh` runs `postman skills status --json`: `current` is a pass, `behind`, `modified` and `unknown` are warnings, anything else (including `foreign`) is `not_available`. **Today it reports `not_available` in this repo.** Waiting for feedback from the Postman CLI team. A workaround (check a temporary copy of the skills without the `.py` files) is kept on the branch `fix/skills-check-py-workaround` and is not used.
 - `postman skills update` exits 4 when a skill file was edited locally (needs `--force`).
 
 ### 2. Contract lint — works
@@ -43,8 +43,8 @@ The plugin is updated with `claude plugin update postman` (named in the CLI help
 - `postman context-graph ask` is answered by an LLM service: free text plus citations; `provenance` only echoes the typed query, not its result. There is no structured consumer list and no breaking flag.
 - The team is derived from the API key. With the key of the team that ingested `healthcare-org-app/healthcare-appointments`, the question "Which services consume or depend on appointments-service?" returns `patients-service` (`GET /api/appointments/`, confidence 0.9).
 - The gate asks for a **JSON-only** answer (`[{name, endpoint, protocol, confidence}]`). It came back as `[]` once in four runs, so `05-impact.sh` retries empty answers up to 3 times.
-- "Breaking" does **not** come from the Context Graph: it is a heuristic on `git diff <base> -- contract/openapi.yaml` (removed or renamed property or path, changed `required:` list). Breaking plus at least one consumer is a hard blocker.
-- Mismatch to keep in mind: the consumers are those of `appointments-service` (set with `IMPACT_API`), not of the demo Appointments API, which the graph does not know.
+- "Breaking" does **not** come from the Context Graph: `gate/lib/contract-diff.py` compares the contract with the base branch structurally (removed or renamed path, response or property, changed type, a request that became stricter). Additions, including a new schema with its own `required` list, are not breaking. Without PyYAML it falls back to a line heuristic. Breaking plus at least one consumer is a hard blocker.
+- The API of this repo is the Java implementation of the `appointments-service` contract, so the consumers found are the real ones (name set with `IMPACT_API`).
 - Needs the `POSTMAN_API_KEY` of the team holding the ingestion; without it the step is `not_available`.
 
 ## Commands the plan guessed that do not exist

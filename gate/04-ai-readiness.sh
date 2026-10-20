@@ -12,7 +12,8 @@ $CMD > "$out" 2>/dev/null
 score="$(jq -r '.readiness.score_0_100 // empty' "$out" 2>/dev/null)"
 [ -n "$score" ] || { not_available "ai-readiness returned no score" "$CMD"; exit 0; }
 
-jq '[(.recommendations // [])[]]' "$out" > "$details" 2>/dev/null
+# Recommendations become findings with a hint, so a coding agent knows what to improve in the contract.
+jq '[(.recommendations // [])[] | {check: "recommendation", result: ., hint: "Update the descriptions or examples in contract/openapi.yaml to address this, then run ./gate/04-ai-readiness.sh."}]' "$out" > "$details" 2>/dev/null
 bucket="$(jq -r '.readiness.bucket' "$out")"
 summary="AI readiness $score/100 ($bucket)"
 

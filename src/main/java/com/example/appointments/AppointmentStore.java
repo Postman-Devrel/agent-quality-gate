@@ -35,14 +35,23 @@ public class AppointmentStore {
     private final AtomicLong sequence = new AtomicLong(2317);
 
     public AppointmentStore() {
-        // Seeded so the Postman collection (which uses record 2317) has data on a fresh start.
+        // Seed data, so a live demo has something to list and filter. Record 2317 is the one
+        // the Postman collection uses.
+        seed(2317, "active", 77, 12, 5501, "Annual physical");
+        seed(2318, "checked_in", 78, 12, 5502, "Follow-up");
+        seed(2319, "cancelled", 79, 14, 5503, "Dermatology");
+        seed(2320, "active", 80, 14, 5504, "Vaccination");
+        sequence.set(2320);
+    }
+
+    private void seed(long id, String status, int patientId, int providerId, int slotId, String reason) {
         var now = Instant.now();
         var data = new LinkedHashMap<String, Object>();
-        data.put("patient_id", 77);
-        data.put("provider_id", 12);
-        data.put("slot_id", 5501);
-        data.put("reason", "Annual physical");
-        records.put(2317L, new Record(2317, "active", data, now, now));
+        data.put("patient_id", patientId);
+        data.put("provider_id", providerId);
+        data.put("slot_id", slotId);
+        data.put("reason", reason);
+        records.put(id, new Record(id, status, data, now, now));
     }
 
     public List<Record> list(Map<String, String> filters, int limit, int offset) {

@@ -34,25 +34,38 @@ fi
 consumers="$(echo "$answer" | jq -c '.')"
 count="$(echo "$consumers" | jq 'length')"
 
-# --- 2. Does this change touch the contract, and does it look breaking? -------------
-# Heuristic on the diff of contract/openapi.yaml against the base branch:
-#   removed/renamed property or path, or a changed "required:" list = breaking.
+# --- 2. Does this change touch the contract, and is it breaking? ----------------------
+# Structural comparison of the contract against the base branch (gate/lib/contract-diff.py):
+# removed or renamed property/path/response, changed type, or a request that became stricter.
+# New paths, new optional fields and new schemas are NOT breaking. If PyYAML is missing, fall
+# back to a line-based heuristic on the diff (removed key, changed "required:").
 base="$BASE_REF"; git rev-parse --verify -q "$base" >/dev/null || base="HEAD"
-diff_out="$(git diff "$base" -- "$CONTRACT" 2>/dev/null)"
-changed=false; breaking=false
-if [ -n "$diff_out" ]; then
-  changed=true
-  echo "$diff_out" | grep -E '^-[^-]' | grep -E '^-\s+(/[^:]*|[A-Za-z_][A-Za-z0-9_]*):\s*$|^-\s+required:' >/dev/null && breaking=true
-  echo "$diff_out" | grep -E '^\+\s+required:' >/dev/null && breaking=true
+changed=false; breaking=false; changes='[]'
+git diff --quiet "$base" -- "$CONTRACT" 2>/dev/null || changed=true
+if [ "$changed" = true ]; then
+  basefile="$(mktemp)"; git show "$base:$CONTRACT" > "$basefile" 2>/dev/null
+  changes="$(python3 gate/lib/contract-diff.py "$basefile" "$CONTRACT" 2>/dev/null)"; rc=$?
+  if [ "$rc" -eq 3 ] || [ -z "$changes" ]; then
+    log "PyYAML missing: using the line-based heuristic"
+    diff_out="$(git diff "$base" -- "$CONTRACT" 2>/dev/null)"; changes='[]'
+    if echo "$diff_out" | grep -E '^-[^-]' | grep -qE '^-\s+(/[^:]*|[A-Za-z_][A-Za-z0-9_]*):\s*$|^-\s+required:'; then
+      changes='[{"change":"a property, path or required list was removed or changed in the contract diff","hint":"Keep what consumers use; add next to it, or version the API."}]'
+    fi
+  fi
+  [ "$(echo "$changes" | jq 'length')" -gt 0 ] && breaking=true
 fi
 
 # --- 3. Verdict ---------------------------------------------------------------------
 details="$(mktemp)"
 echo "$consumers" | jq --argjson breaking "$([ "$breaking" = true ] && [ "$count" -gt 0 ] && echo true || echo false)" \
-  'map(. + {api: "'"$IMPACT_API"'", breaking: $breaking})' > "$details"
+  'map(. + {api: "'"$IMPACT_API"'", breaking: $breaking, check: "consumer", result: (.name + " calls " + (.endpoint // "?")),
+    hint: (if $breaking then "This change breaks " + .name + ". See the breaking changes listed below." else "Known consumer, no action." end)})' > "$details"
+# Each breaking change is a finding with its own fix hint.
+echo "$changes" | jq '[.[] | {check: "breaking-change", result: .change, hint: .hint}]' > "$details.changes"
+jq -s '.[0] + .[1]' "$details" "$details.changes" > "$details.all" && mv "$details.all" "$details"
 
 if   [ "$breaking" = true ] && [ "$count" -gt 0 ]; then
-  emit fail 0 "Breaking contract change: $count consumer(s) of $IMPACT_API affected ($(echo "$consumers" | jq -r 'map(.name)|join(", ")'))" "$CMD" "$details"
+  emit fail 0 "Breaking contract change ($(echo "$changes" | jq -r '.[0].change')): $count consumer(s) of $IMPACT_API affected ($(echo "$consumers" | jq -r 'map(.name)|join(", ")'))" "$CMD" "$details"
 elif [ "$breaking" = true ]; then
   emit warn 60 "Breaking contract change, but the Context Graph knows no consumer of $IMPACT_API" "$CMD" "$details"
 elif [ "$changed" = true ]; then
