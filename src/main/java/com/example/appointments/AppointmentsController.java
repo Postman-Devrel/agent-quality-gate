@@ -1,5 +1,7 @@
 package com.example.appointments;
 
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -75,6 +77,34 @@ public class AppointmentsController {
     public ResponseEntity<?> checkIn(@PathVariable long recordId) {
         var record = store.setStatus(recordId, "checked_in");
         return record == null ? error(HttpStatus.NOT_FOUND, "not found") : ResponseEntity.ok(record.toJson());
+    }
+
+    @PostMapping("/api/appointments/{recordId}/reschedule")
+    public ResponseEntity<?> reschedule(@PathVariable long recordId,
+                                        @RequestBody(required = false) Map<String, Object> payload) {
+        var body = payload == null ? Map.<String, Object>of() : payload;
+        var problem = validateReschedule(body);
+        if (problem != null) return error(HttpStatus.BAD_REQUEST, problem);
+        var record = store.reschedule(recordId, body);
+        return record == null ? error(HttpStatus.NOT_FOUND, "not found") : ResponseEntity.ok(record.toJson());
+    }
+
+    /** Mirrors AppointmentRescheduleRequest: starts_at required, known keys only. */
+    private String validateReschedule(Map<String, Object> body) {
+        if (!(body.get("starts_at") instanceof String startsAt)) return "starts_at must be an ISO-8601 date-time";
+        try {
+            OffsetDateTime.parse(startsAt);
+        } catch (DateTimeParseException e) {
+            return "starts_at must be an ISO-8601 date-time";
+        }
+        for (var key : List.of("slot_id", "provider_id")) {
+            if (body.containsKey(key) && !(body.get(key) instanceof Number)) return key + " must be an integer";
+        }
+        if (body.containsKey("reason") && !(body.get("reason") instanceof String)) return "reason must be a string";
+        for (var key : body.keySet()) {
+            if (!List.of("starts_at", "slot_id", "provider_id", "reason").contains(key)) return "unknown field: " + key;
+        }
+        return null;
     }
 
     @GetMapping("/health")

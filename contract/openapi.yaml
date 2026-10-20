@@ -59,7 +59,7 @@ security:
 
 tags:
   - name: Appointments
-    description: CRUD, cancellation and check-in over appointment records.
+    description: CRUD, cancellation, rescheduling and check-in over appointment records.
   - name: Health
     description: Unauthenticated liveness and readiness probes.
 
@@ -393,6 +393,65 @@ paths:
         '404':
           $ref: '#/components/responses/TerseNotFound'
 
+  /api/appointments/{record_id}/reschedule:
+    post:
+      operationId: rescheduleAppointment
+      summary: Reschedule an appointment
+      description: |
+        Moves the appointment to a new start time and returns the full updated
+        record. `starts_at` is required; `slot_id`, `provider_id` and `reason`
+        are optional and, when present, replace the stored values. Status is left
+        unchanged.
+
+        As with `slot_id` elsewhere in this service, the new `slot_id` is stored
+        without validation; `appointment-slots-service` is expected to reopen the
+        previous slot and book the new one from the event.
+
+        Publishes: `appointment.rescheduled`, `audit.event`
+        (`appointment.reschedule`).
+      tags: [Appointments]
+      x-fern-sdk-group-name: appointments
+      x-fern-sdk-method-name: reschedule
+      parameters:
+        - $ref: '#/components/parameters/RecordId'
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AppointmentRescheduleRequest'
+      responses:
+        '200':
+          description: The rescheduled appointment.
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Appointment'
+              example:
+                id: 2317
+                status: active
+                created_at: '2026-08-12T09:14:22.481930+00:00'
+                updated_at: '2026-08-13T08:00:00.120000+00:00'
+                patient_id: 77
+                provider_id: 12
+                slot_id: 5620
+                starts_at: '2026-08-21T09:00:00+00:00'
+                reason: Patient request
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/TerseNotFound'
+        '5XX':
+          $ref: '#/components/responses/ServerError'
+
   /health:
     get:
       operationId: getHealth
@@ -498,16 +557,26 @@ components:
 
   responses:
     BadRequest:
-      description: Malformed request — for the list endpoint, a non-integer `limit` or `offset`.
+      description: |
+        Malformed request. For the list endpoint, a non-integer `limit` or
+        `offset`; for reschedule, a missing or non-ISO-8601 `starts_at`. Not
+        retryable: the caller must fix the input.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-          example:
-            error: offset/limit must be integers
+          examples:
+            pagination:
+              summary: Non-integer limit or offset
+              value:
+                error: offset/limit must be integers
+            reschedule:
+              summary: Missing or invalid starts_at
+              value:
+                error: starts_at must be an ISO-8601 date-time
 
     Unauthorized:
-      description: The bearer token is missing, malformed, expired, or fails signature verification.
+      description: The bearer token is missing, malformed, expired, or fails signature verification. Not retryable as is; obtain a valid token, then retry.
       content:
         application/json:
           schema:
@@ -523,7 +592,7 @@ components:
                 error: invalid token
 
     Forbidden:
-      description: The token is valid but lacks the scope this operation requires.
+      description: The token is valid but lacks the scope this operation requires. Not retryable; request a token with the listed scope.
       content:
         application/json:
           schema:
@@ -544,11 +613,20 @@ components:
           example:
             error: appointments 999999 not found
 
+    ServerError:
+      description: Unexpected server failure. Retryable with backoff, reusing the same `X-Request-ID`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: internal server error
+
     TerseNotFound:
       description: |
         No appointment exists with the given id. The action endpoints return the
         terse body `{"error": "not found"}` rather than the resource-qualified
-        message used by the CRUD endpoints.
+        message used by the CRUD endpoints. Not retryable; fix the id.
       content:
         application/json:
           schema:
@@ -693,6 +771,32 @@ components:
       example:
         starts_at: '2026-08-21T09:00:00+00:00'
         reason: Rescheduled at patient request
+
+    AppointmentRescheduleRequest:
+      type: object
+      description: New time (and optionally slot or provider) for an existing appointment.
+      required:
+        - starts_at
+      properties:
+        starts_at:
+          type: string
+          format: date-time
+          description: New start time.
+        slot_id:
+          type: integer
+          format: int64
+          description: New slot. Stored without validation.
+        provider_id:
+          type: integer
+          format: int64
+        reason:
+          type: string
+          description: Why the appointment is being moved.
+      additionalProperties: false
+      example:
+        starts_at: '2026-08-21T09:00:00+00:00'
+        slot_id: 5620
+        reason: Patient request
 
     AppointmentPage:
       type: object

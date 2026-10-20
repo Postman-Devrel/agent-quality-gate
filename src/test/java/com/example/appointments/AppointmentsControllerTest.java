@@ -55,6 +55,38 @@ class AppointmentsControllerTest {
     }
 
     @Test
+    void rescheduleUpdatesStartsAtAndKeepsStatus() throws Exception {
+        mvc.perform(post("/api/appointments/2318/reschedule").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"starts_at\":\"2026-08-21T09:00:00+00:00\",\"slot_id\":5620,\"reason\":\"Patient request\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("checked_in"))
+                .andExpect(jsonPath("$.starts_at").value("2026-08-21T09:00:00+00:00"))
+                .andExpect(jsonPath("$.slot_id").value(5620))
+                .andExpect(jsonPath("$.reason").value("Patient request"));
+    }
+
+    @Test
+    void rescheduleRejectsMissingOrInvalidStartsAt() throws Exception {
+        mvc.perform(post("/api/appointments/2317/reschedule").contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("starts_at must be an ISO-8601 date-time"));
+        mvc.perform(post("/api/appointments/2317/reschedule").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"starts_at\":\"tomorrow\"}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/appointments/2317/reschedule").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"starts_at\":\"2026-08-21T09:00:00Z\",\"nope\":1}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rescheduleUnknownAppointmentIs404() throws Exception {
+        mvc.perform(post("/api/appointments/999999/reschedule").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"starts_at\":\"2026-08-21T09:00:00Z\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("not found"));
+    }
+
+    @Test
     void requestIdIsEchoedOrGenerated() throws Exception {
         mvc.perform(get("/health").header("X-Request-Id", "demo-123"))
                 .andExpect(header().string("X-Request-Id", "demo-123"));

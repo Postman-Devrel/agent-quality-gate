@@ -110,4 +110,15 @@ public class AppointmentStore {
         records.put(id, updated);
         return updated;
     }
+
+    /** Replaces starts_at (and slot_id, provider_id, reason when present); status is left unchanged. */
+    public Record reschedule(long id, Map<String, Object> payload) {
+        var existing = records.get(id);
+        if (existing == null) return null;
+        var data = new LinkedHashMap<>(existing.data());
+        data.putAll(payload);
+        var updated = new Record(id, existing.status(), data, existing.createdAt(), Instant.now());
+        records.put(id, updated);
+        return updated;
+    }
 }
