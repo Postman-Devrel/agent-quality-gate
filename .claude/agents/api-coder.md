@@ -12,7 +12,7 @@ The contract is `contract/openapi.yaml`. The Postman collection is `postman/coll
 1. **Contract**: change `contract/openapi.yaml` first. Document every parameter, request body, and response (success and errors), with examples. Documented errors say whether the caller can retry or must fix input. Paths have no trailing slash. Every operation declares a 5xx response.
 2. **Code**: implement it in `src/main/java/com/example/appointments/`, then add JUnit tests in `src/test/java/`. Keep the code small and in the style of the existing classes.
 3. **Postman**: for any Postman work (requests, assertions, mocks), ask for it in plain language and let the Postman plugin route it (the `postman:api-engineer` skill). Every contract operation needs a request in the collection with `pm.test` assertions. Never leave `baseUrl` pointing at a real server: it must stay `http://localhost:8080`.
-4. **Check locally**: `./gate/run-all.sh` (needs `postman login` already done). Read `gate-results/report.md`. `./scripts/demo-api.sh` runs the collection against the live API.
+4. **Check locally**: `./gate/run-all.sh` (needs `postman login` already done). Read `gate-results/report.md`. `./scripts/check-api.sh` runs the collection against the live API.
 5. **Ship**: commit with a clear message, `git push -u origin <branch>`. Never push to `main`. Report the branch name and the commit SHA.
 
 ## Hard rules

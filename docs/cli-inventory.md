@@ -44,7 +44,7 @@ The plugin is updated with `claude plugin update postman` (named in the CLI help
 - The team is derived from the API key. With the key of the team that ingested `healthcare-org-app/healthcare-appointments`, the question "Which services consume or depend on appointments-service?" returns `patients-service` (`GET /api/appointments/`, confidence 0.9).
 - The gate asks for a **JSON-only** answer (`[{name, endpoint, protocol, confidence}]`). It came back as `[]` once in four runs, so `05-impact.sh` retries empty answers up to 3 times.
 - "Breaking" does **not** come from the Context Graph: `gate/lib/contract-diff.py` compares the contract with the base branch structurally (removed or renamed path, response or property, changed type, a request that became stricter). Additions, including a new schema with its own `required` list, are not breaking. Without PyYAML it falls back to a line heuristic. Breaking plus at least one consumer is a hard blocker.
-- Mismatch to keep in mind: the consumers are those of `appointments-service` (set with `IMPACT_API`), not of the demo Appointments API, which the graph does not know.
+- The API of this repo is the Java implementation of the `appointments-service` contract, so the consumers found are the real ones (name set with `IMPACT_API`).
 - Needs the `POSTMAN_API_KEY` of the team holding the ingestion; without it the step is `not_available`.
 
 ## Commands the plan guessed that do not exist

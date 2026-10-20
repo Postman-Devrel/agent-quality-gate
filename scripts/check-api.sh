@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts the Spring Boot API, runs the Postman collection against it, then stops it.
-# Live check that the running code honours the contract.  Usage: ./scripts/demo-api.sh
+# Live check that the running code honours the contract.  Usage: ./scripts/check-api.sh
 set -u
 cd "$(dirname "$0")/.." || exit 1
 PORT="${PORT:-8080}"
