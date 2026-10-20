@@ -31,6 +31,23 @@ export type CiRun = {
   url: string
 }
 
+/** One line of the overview: the latest finished gate run of a branch, and its pull request if any. */
+export type OverviewRow = {
+  branch: string
+  pr: number | null
+  title: string
+  /** Latest non-cancelled run: queued, in_progress or completed. */
+  status: string
+  conclusion: string
+  rating: string
+  score: number | null
+  passed: boolean | null
+  blockers: number
+  sha: string
+  runId: number
+  isCurrent: boolean
+}
+
 declare module 'claude-code' {
   interface PluginState {
     'quality-gate-panel': {
@@ -39,6 +56,7 @@ declare module 'claude-code' {
       branch: string
       note: string
       isHidden: boolean
+      overview: OverviewRow[]
     }
   }
 }

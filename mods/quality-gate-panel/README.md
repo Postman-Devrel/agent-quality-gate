@@ -1,18 +1,23 @@
 # quality-gate-panel
 
-A Claude Code mod that shows this repo's quality gate while you work.
+A Claude Code mod that shows this repo's quality gate while you work, without leaving the session.
 
-- **Band above the prompt**: `Gate A 93/100`, one dot per step (green pass, orange warn, red fail, hollow when `not_available`), the source (`local` or `ci@<sha>`) and the CI state while a run is in progress.
+## What it shows
+
+- **`/gate` (and `/gate-all`)**: one wide pane, docked beside the conversation where the surface allows it. It also tries to open at session start.
+  - **Branches and pull requests**: the latest finished run of the workflow per branch, with its rating, score, blockers, commit and open PR number; the current branch is marked.
+  - **This branch**: the step table, the blockers and the "What to fix" findings.
+  - **Buttons**: *Send fixes to api-coder* puts the fixes brief in the prompt box (you read it, then Enter); *Re-run the gate* puts the command in the prompt box.
+- **Toasts and a prompt suggestion** when the CI run for the checked-out commit finishes. The suggested next prompt (apply the fixes, or summarize and open a PR) is only proposed; Tab takes it.
 - **Status line**: `Gate A 93`.
-- **`/gate`**: a pane with the step table, the blockers and the "What to fix" findings.
-- **Toasts** when the CI run of the current commit changes state.
+- **`/gate-band`**: a compact band above the prompt (current branch, one dot per step, a `branches` line). Off by default.
 
 ## Where the data comes from
 
 - The local report `gate-results/report.json`, written by `./gate/run-all.sh`.
-- The CI report: the mod polls `gh run list` for the current branch every 20 seconds and, when the run for the checked-out commit is finished, downloads the `gate-report` artifact into `gate-results/ci/` (git-ignored). The CI report wins over the local one for the same commit.
+- The CI reports: every 20 seconds for the current branch and every 60 seconds for the recent branches, the mod runs `gh run list` and downloads the `gate-report` artifact of finished runs into `gate-results/ci/` (git-ignored). A CI report wins over the local one for the same commit.
 
-Needs `git` and an authenticated `gh` in the project directory. Without `gh` the mod shows the local report only.
+Needs `git` and an authenticated `gh` in the project directory. A desktop app often starts with a short `PATH`, so the mod also tries `/opt/homebrew/bin/gh`, `/usr/local/bin/gh` and `/usr/bin/gh`. When `gh` fails, the reason is shown instead of an empty list.
 
 ## Install
 
@@ -25,6 +30,8 @@ From a clone, in Claude Code:
 
 Or run a session with `claude --plugin-dir mods/quality-gate-panel`.
 
-## Status
+## Limits
 
-Validated with `claude plugin validate` and type-checked with `tsc`. It has no automated tests yet (`claude plugin test` was unavailable when it was written).
+- Where a pane is placed (beside the conversation or above the prompt) is the surface's choice. The mod asks for 110 columns and 26 rows.
+- It cannot add a tab to the app's own side panes (Changes, PR, terminal).
+- Validated with `claude plugin validate` and type-checked with `tsc`. No automated tests yet: `claude plugin test` was unavailable when it was written.

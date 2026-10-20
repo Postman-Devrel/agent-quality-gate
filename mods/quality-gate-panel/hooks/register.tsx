@@ -1,16 +1,21 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { CiRun, GateReport } from '../types'
+import type { CiRun, GateReport, OverviewRow } from '../types'
 
 const PANE = 'quality-gate'
+const OVERVIEW_MS = 60000
+const MAX_ROWS = 10
+const MAX_DOWNLOADS = 5
 const POLL_MS = 20000
 
 const report = atom({ plugin: 'quality-gate-panel', key: 'report' } as const, null)
 const run = atom({ plugin: 'quality-gate-panel', key: 'run' } as const, null)
 const branch = atom({ plugin: 'quality-gate-panel', key: 'branch' } as const, '')
 const note = atom({ plugin: 'quality-gate-panel', key: 'note' } as const, '')
-const isHidden = atom({ plugin: 'quality-gate-panel', key: 'isHidden' } as const, false)
+// The band above the prompt is off by default: the pane is the main view. /gate-band turns it on.
+const isHidden = atom({ plugin: 'quality-gate-panel', key: 'isHidden' } as const, true)
+const overview = atom({ plugin: 'quality-gate-panel', key: 'overview' } as const, [])
 
 const ICON = { pass: '●', warn: '●', fail: '●', not_available: '○' } as const
 const COLOR = { pass: 'success', warn: 'warning', fail: 'error', not_available: 'inactive' } as const
@@ -23,6 +28,32 @@ const SHORT: Record<string, string> = {
 }
 
 const ratingColor = (r: GateReport) => (r.passed ? 'success' : 'error')
+
+/** Color and short label of a branch chip in the band: the rating once known, else the run state. */
+const chipColor = (o: OverviewRow) =>
+  o.status !== 'completed' ? 'warning' : o.passed === true ? 'success' : o.passed === false || o.conclusion === 'failure' ? 'error' : 'inactive'
+const chipLabel = (o: OverviewRow) =>
+  o.status !== 'completed' ? `${o.status}…` : o.rating !== '' ? `${o.rating}${o.score}${o.passed ? '' : '✘'}` : o.conclusion || '?'
+
+/**
+ * Runs the GitHub CLI. A desktop app often starts with a short PATH (no Homebrew), so `gh` is also
+ * tried at its usual absolute paths; the first one that starts is remembered.
+ */
+let GH_BIN = ''
+async function ghRun($: any, args: string[], timeoutMs: number) {
+  const candidates = GH_BIN ? [GH_BIN] : ['gh', '/opt/homebrew/bin/gh', '/usr/local/bin/gh', '/usr/bin/gh']
+  let last: unknown = null
+  for (const bin of candidates) {
+    try {
+      const out = await $.process.run([bin, ...args], { timeoutMs })
+      GH_BIN = bin
+      return out
+    } catch (error) {
+      last = error
+    }
+  }
+  throw last
+}
 
 let lastRunKey = ''
 
@@ -62,12 +93,7 @@ async function refresh($: any) {
   let shown: GateReport | null = local
 
   // CI: the latest run of the workflow on this branch. Authoritative when it is for HEAD.
-  const list = await $.process
-    .run(
-      ['gh', 'run', 'list', '--workflow', 'quality-gate', '--branch', name, '--limit', '1', '--json', 'databaseId,status,conclusion,headSha,url'],
-      { timeoutMs: 20000 },
-    )
-    .catch(() => null)
+  const list = await ghRun($, ['run', 'list', '--workflow', 'quality-gate', '--branch', name, '--limit', '1', '--json', 'databaseId,status,conclusion,headSha,url'], 20000).catch(() => null)
   let ci: CiRun | null = null
   if (list && list.exitCode === 0) {
     try {
@@ -87,9 +113,7 @@ async function refresh($: any) {
     const dir = `gate-results/ci/${ci.id}`
     const path = `${dir}/report.json`
     if (!(await $.fs.exists(path))) {
-      await $.process
-        .run(['gh', 'run', 'download', String(ci.id), '-n', 'gate-report', '-D', dir], { timeoutMs: 60000 })
-        .catch(() => null)
+      await ghRun($, ['run', 'download', String(ci.id), '-n', 'gate-report', '-D', dir], 60000).catch(() => null)
     }
     const remote = await readReport($, path, 'ci', ci.sha)
     if (remote) shown = remote
@@ -109,18 +133,146 @@ async function refresh($: any) {
 }
 
 
+/** The brief the person can hand to the coding agent: what failed and how to fix it. */
+function fixesPrompt(r: GateReport, branchName: string): string {
+  const head = `The quality gate ${r.passed ? 'passed with warnings' : 'FAILED'} on branch ${branchName}${r.sha ? ' (commit ' + r.sha.slice(0, 7) + ')' : ''}: rating ${r.rating}, ${r.score}/100.`
+  const blockers = r.blockers.length ? `Blockers: ${r.blockers.join('; ')}.` : 'No blocker.'
+  const fixes = r.feedback
+    .slice(0, 12)
+    .map((f, i) => `${i + 1}. [${f.step}] ${f.finding}\n   Fix: ${f.fix}`)
+    .join('\n')
+  return [
+    head,
+    blockers,
+    fixes ? `Fixes, blockers first:\n${fixes}` : 'See gate-results/report.md.',
+    'Use the api-coder agent: apply the fixes contract first, never rename or remove a field consumers use, run ./gate/run-all.sh, then push to the same branch.',
+  ].join('\n')
+}
+
+/** What to do next once a CI run for HEAD is known. */
+function nextPrompt(r: GateReport, branchName: string): string {
+  return r.passed && r.feedback.length === 0
+    ? `The quality gate passed on ${branchName} (rating ${r.rating}, ${r.score}/100). Summarize what changed on this branch and open a pull request if there is none.`
+    : fixesPrompt(r, branchName)
+}
+
+/**
+ * One row per recent branch: the latest non-cancelled run of the workflow, its rating (from the
+ * gate-report artifact, downloaded once and cached under gate-results/ci/) and its open PR.
+ */
+async function refreshOverview($: any) {
+  const current = await $.process.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], { timeoutMs: 5000 }).catch(() => null)
+  const here = current && current.exitCode === 0 ? current.stdout.trim() : ''
+  const runs = await ghRun($, ['run', 'list', '--workflow', 'quality-gate', '--limit', '60', '--json', 'databaseId,headBranch,headSha,status,conclusion,createdAt'], 30000)
+    .catch(() => null)
+  if (!runs || runs.exitCode !== 0) {
+    await update($, note, () => `branches: gh failed (${runs ? String(runs.stderr).trim().slice(0, 80) || 'exit ' + runs.exitCode : 'not found'})`)
+    return
+  }
+  const prs = await ghRun($, ['pr', 'list', '--state', 'open', '--json', 'number,headRefName,title'], 30000)
+    .catch(() => null)
+  const prByBranch: Record<string, { number: number; title: string }> = {}
+  try {
+    for (const p of JSON.parse(prs?.stdout || '[]')) prByBranch[p.headRefName] = { number: p.number, title: p.title }
+  } catch {}
+
+  // Latest non-cancelled run per branch (a cancelled run was replaced by a newer one).
+  const latest: Record<string, any> = {}
+  try {
+    for (const r of JSON.parse(runs.stdout)) {
+      if (r.conclusion === 'cancelled') continue
+      const seen = latest[r.headBranch]
+      if (!seen || r.createdAt > seen.createdAt) latest[r.headBranch] = r
+    }
+  } catch {
+    return
+  }
+  const ordered = Object.values(latest)
+    .sort((a: any, b: any) => (a.createdAt < b.createdAt ? 1 : -1))
+    .slice(0, MAX_ROWS)
+
+  let downloads = 0
+  const rows: OverviewRow[] = []
+  for (const r of ordered as any[]) {
+    const dir = `gate-results/ci/${r.databaseId}`
+    const path = `${dir}/report.json`
+    if (r.status === 'completed' && !(await $.fs.exists(path)) && downloads < MAX_DOWNLOADS) {
+      downloads += 1
+      await ghRun($, ['run', 'download', String(r.databaseId), '-n', 'gate-report', '-D', dir], 60000).catch(() => null)
+    }
+    const rep = r.status === 'completed' ? await readReport($, path, 'ci', r.headSha) : null
+    const pr = prByBranch[r.headBranch]
+    rows.push({
+      branch: r.headBranch,
+      pr: pr ? pr.number : null,
+      title: pr ? pr.title : '',
+      status: r.status,
+      conclusion: r.conclusion || '',
+      rating: rep ? rep.rating : '',
+      score: rep ? rep.score : null,
+      passed: rep ? rep.passed : null,
+      blockers: rep ? rep.blockers.length : 0,
+      sha: String(r.headSha).slice(0, 7),
+      runId: r.databaseId,
+      isCurrent: r.headBranch === here,
+    })
+  }
+  await update($, overview, () => rows)
+  await update($, note, () => '')
+}
+
+/** The branches table: latest run per branch, with its rating and open PR. Pure drawing, no engine call. */
+function branchesTable(rows: OverviewRow[], Box: any, Text: any) {
+  if (rows.length === 0) {
+    return <Text dimColor>No gate run found yet. Needs an authenticated gh in this project.</Text>
+  }
+  return (
+    <Box flexDirection="column">
+      <Text bold>Branches and pull requests</Text>
+      <Text dimColor>latest run per branch</Text>
+      {rows.map(row => {
+        const color = chipColor(row)
+        const state = row.status !== 'completed' ? row.status : row.passed === null ? row.conclusion || '?' : row.passed ? 'PASSED' : 'FAILED'
+        return (
+          <Text color={color}>
+            {row.isCurrent ? '▶' : ' '} {row.branch.padEnd(28).slice(0, 28)} {(row.pr !== null ? '#' + row.pr : '-').padEnd(4)} {state.padEnd(10)}
+            {row.rating !== '' ? ` ${row.rating} ${row.score}/100` : ''}
+            {row.blockers > 0 ? `  ${row.blockers} blocker(s)` : ''}  {row.sha}
+          </Text>
+        )
+      })}
+    </Box>
+  )
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'gate', description: 'Show the quality gate report (local and CI) in a pane' })
+    await $.command.register({ name: 'gate-all', description: 'Same pane as /gate: the gate state of every recent branch and open PR' })
+    await $.command.register({ name: 'gate-band', description: 'Show or hide the compact gate band above the prompt' })
+    void $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })
     void refresh($)
+    void refreshOverview($)
     $.clock.every(POLL_MS, () => void refresh($))
+    $.clock.every(OVERVIEW_MS, () => void refreshOverview($))
     return next(e)
   })
 
   on('command.run', { command: 'gate' }, async $ => {
     await refresh($)
-    await $.ui.open({ id: PANE, title: 'Quality gate' })
-    await update($, isHidden, () => false)
+    await $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })
+    return { text: 'Quality gate pane opened.' }
+  })
+
+  on('command.run', { command: 'gate-band' }, async $ => {
+    const hidden = await read($, isHidden)
+    await update($, isHidden, () => !hidden)
+    return { text: hidden ? 'Gate band shown above the prompt.' : 'Gate band hidden.' }
+  })
+
+  on('command.run', { command: 'gate-all' }, async $ => {
+    await refreshOverview($)
+    await $.ui.open({ id: PANE, title: 'Quality gate', columns: 110, rows: 26 })
     return { text: 'Quality gate pane opened.' }
   })
 
@@ -133,12 +285,21 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const r = await read($, report)
-    if (e.props.hasSurvey || !r || (await read($, isHidden))) return next(e)
+    const rows = await read($, overview)
+    const problem = await read($, note)
+    // Nothing to show only when there is neither a report, nor another branch, nor a problem to report.
+    if (e.props.hasSurvey || (!r && rows.length === 0 && problem === '') || (await read($, isHidden))) return next(e)
     const ci = await read($, run)
+    const prs = rows.filter(x => x.pr !== null)
+    const others = rows.filter(x => !x.isCurrent).slice(0, 4)
+    const prOk = prs.filter(x => x.passed === true).length
+    const prKo = prs.filter(x => x.passed === false || x.conclusion === 'failure').length
     const { Box, Text, Button } = $.ui.resolve(e)
-    const sha = r.source === 'ci' ? ` ci@${(r.sha ?? '').slice(0, 7)}` : ' local'
+    const sha = !r ? '' : r.source === 'ci' ? ` ci@${(r.sha ?? '').slice(0, 7)}` : ' local'
     const pending = ci && ci.isHead && ci.status !== 'completed' ? ` · CI ${ci.status}…` : ''
     return (
+      <Box flexDirection="column">
+      {r && (
       <Box>
         <Text bold color={ratingColor(r)}>
           {r.passed ? '✔' : '✘'} Gate {r.rating} {r.score}/100
@@ -150,28 +311,61 @@ export const register: Register = on => {
           </Text>
         ))}
         {r.blockers.length > 0 && <Text color="error"> blockers: {r.blockers.length} </Text>}
+        {prs.length > 0 && (
+          <Text dimColor>
+            {' '}PRs: {prOk > 0 && <Text color="success">{prOk}✔ </Text>}{prKo > 0 && <Text color="error">{prKo}✘ </Text>}
+          </Text>
+        )}
         <Button key="hide" label="Hide" onPress={() => update($, isHidden, () => true)} />
+      </Box>
+      )}
+      {others.length === 0 && problem !== '' && (
+        <Box>
+          <Text color="warning">{problem}</Text>
+        </Box>
+      )}
+      {others.length > 0 && (
+        <Box>
+          <Text dimColor>branches </Text>
+          {others.map(o => (
+            <Text color={chipColor(o)}>
+              {o.branch.slice(0, 22)}{o.pr !== null ? ` #${o.pr}` : ''} {chipLabel(o)}{'  '}
+            </Text>
+          ))}
+        </Box>
+      )}
       </Box>
     )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text } = $.ui.resolve(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
     const r = await read($, report)
     const ci = await read($, run)
     const name = await read($, branch)
     const hint = await read($, note)
+    const rowsAll = await read($, overview)
     if (!r) {
       return (
         <Box flexDirection="column">
+          {branchesTable(rowsAll, Box, Text)}
+          <Text> </Text>
           <Text dimColor>No gate report yet on {name || 'this branch'}. Run ./gate/run-all.sh, or push and wait for the CI run.</Text>
           {hint !== '' && <Text color="warning">{hint}</Text>}
         </Box>
       )
     }
-    const room = Math.max(3, (e.viewport?.rows ?? 24) - 12)
+    const room = Math.max(3, (e.viewport?.rows ?? 24) - 22)
     return (
       <Box flexDirection="column">
+        <Box>
+          <Button key="fix" label="Send fixes to api-coder" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
+          <Button key="rerun" label="Re-run the gate" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
+        </Box>
+        <Text> </Text>
+        {branchesTable(rowsAll, Box, Text)}
+        <Text> </Text>
+        <Text bold>This branch ({name})</Text>
         <Text bold color={ratingColor(r)}>
           {r.passed ? 'PASSED' : 'FAILED'}  rating {r.rating}  {r.score}/100
         </Text>
