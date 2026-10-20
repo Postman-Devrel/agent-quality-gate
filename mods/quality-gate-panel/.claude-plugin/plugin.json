@@ -1,7 +1,7 @@
 {
   "name": "quality-gate-panel",
-  "version": "0.1.0",
-  "description": "Shows the agent quality gate (rating, score, blockers, fixes) in Claude Code: a band above the prompt, a status line, a detail pane and toasts when the CI run changes.",
+  "version": "0.2.0",
+  "description": "Shows the agent quality gate in Claude Code: a side pane with every branch and PR and the current branch detail, actions for the coding agent, toasts and prompt suggestions on CI changes.",
   "types": "./types/index.d.ts",
   "author": {
     "name": "Postman DevRel"
