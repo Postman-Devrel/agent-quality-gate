@@ -41,7 +41,7 @@ jobs:
           REF_NAME: ${{ github.ref_name }}
         run: |
           # What the gate judges. Docs, README, the Claude Code mod and the agents' own files do not count.
-          RELEVANT='^(contract/|src/|postman/|\.postman/|gate/|\.mvn/|mvnw|pom\.xml$|quality-gate\.yml$|\.github/workflows/quality-gate\.yml$)'
+          RELEVANT='^(src/|postman/|\.postman/|gate/|\.mvn/|mvnw|pom\.xml$|quality-gate\.yml$|\.github/workflows/quality-gate\.yml$)'
           relevant=true
           if [ "$EVENT" != "workflow_dispatch" ]; then
             # A branch is judged on what it changes against the default branch, as a PR is: the push run and

@@ -9,7 +9,7 @@ source "$(dirname "$0")/lib/common.sh"
 
 MVN_BIN="${MVN:-./mvnw}"   # the Maven wrapper; MVN=/path/to/mvn overrides it
 ROOT="$(pwd)"
-CMD="postman collection run \"$COLLECTION\" --use-mock \"{{baseUrl}} mock:<generated mock>\""
+CMD="postman collection run \"$COLLECTION\" --use-mock \"{{baseUrl}} mock:<generated mock>\" --no-report-events"
 need postman && need jq || { not_available "postman CLI or jq not installed" "$CMD"; exit 0; }
 
 details="$(mktemp)"; echo '[]' > "$details"
@@ -33,7 +33,7 @@ else add_detail junit "$junit_msg" "Run ./mvnw test and fix the failing tests (s
 work="$(mktemp -d)"
 postman mock generate "$CONTRACT" -n appointments-mock --port 4010 -o "$work/mock" --force >/dev/null 2>&1
 postman collection run "$COLLECTION" --use-mock "{{baseUrl}} mock:$work/mock/config.yaml" \
-  --output "$work/run" > "$work/run.log" 2>&1
+  --no-report-events --output "$work/run" > "$work/run.log" 2>&1
 summary_file="$(ls "$work"/run/*summary.yaml 2>/dev/null | head -1)"
 if [ -z "$summary_file" ]; then
   not_available "collection run produced no report" "$CMD"; exit 0

@@ -2,7 +2,7 @@
 
 An API-first Java service with a quality gate built for coding agents.
 
-The contract (`contract/openapi.yaml`) is the source of truth. The service is a Spring Boot implementation of the `appointments-service` contract from [`healthcare-org-app/healthcare-appointments`](https://github.com/healthcare-org-app/healthcare-appointments). The Postman objects (collection, mock, spec) live in the repo and in a Postman workspace. A quality gate runs in CI on every push and decides whether a change is good enough to merge: for a human reviewer and for the coding agents that work on the API.
+The contract (`postman/specs/appointments-api/index.yaml`) is the source of truth. The service is a Spring Boot implementation of the `appointments-service` contract from [`healthcare-org-app/healthcare-appointments`](https://github.com/healthcare-org-app/healthcare-appointments). The Postman objects (collection, mock, spec) live in the repo and in a Postman workspace. A quality gate runs in CI on every push and decides whether a change is good enough to merge: for a human reviewer and for the coding agents that work on the API.
 
 ## Why a gate for the contract
 
@@ -12,7 +12,7 @@ A code quality tool analyzes code. Nothing in that stack looks at the API *contr
 
 | Path | Content |
 |------|---------|
-| `contract/openapi.yaml` | OpenAPI 3.1 contract |
+| `postman/specs/appointments-api/index.yaml` | OpenAPI 3.1 contract |
 | `src/` | Spring Boot 3 / Java 21 service (in-memory store) |
 | `postman/` | v3 collection with `pm.test` assertions, local mock, spec link; synced to a Postman workspace |
 | `gate/` | the five gate steps, `aggregate.js`, `run-all.sh`, `lib/` helpers |
@@ -41,9 +41,9 @@ Five steps. Each runs one Postman CLI command (plus minimal glue) and writes `ga
 | # | Step | Command | What it checks |
 |---|------|---------|----------------|
 | 1 | `skills-check` | `postman skills status --json` | the Postman skills committed in the repo are current (`not_available` today because of a CLI bug, see below) |
-| 2 | `contract-lint` | `postman spec lint contract/openapi.yaml -o json` | the contract against Postman governance rules |
+| 2 | `contract-lint` | `postman spec lint postman/specs/appointments-api/index.yaml -o json` | the contract against Postman governance rules |
 | 3 | `tests` | `./mvnw test`, `postman collection run … --use-mock …` | JUnit; the collection replayed against a mock **generated from the current contract**; every contract operation has a request in the collection |
-| 4 | `ai-readiness` | `postman spec ai-readiness contract/openapi.yaml -o json` | how well an agent can discover, understand and call the API |
+| 4 | `ai-readiness` | `postman spec ai-readiness postman/specs/appointments-api/index.yaml -o json` | how well an agent can discover, understand and call the API |
 | 5 | `impact` | `postman context-graph ask …` + contract diff | who consumes the API in the Context Graph, and whether the change breaks them |
 
 Details, flags and output formats: [docs/cli-inventory.md](docs/cli-inventory.md).
@@ -75,7 +75,7 @@ GATE_BASE_REF=origin/main ./gate/05-impact.sh   # branch the contract diff is co
 
 ## CI
 
-`.github/workflows/quality-gate.yml`: `build`, then the five gate steps in parallel (a matrix), then `quality-gate`, which aggregates, writes the job summary, posts or updates one comment on the branch's pull request, uploads the `gate-report` artifact and fails when the gate fails. It runs on every push, on pull requests and on manual dispatch, but only does the work when the branch changes something the gate judges (`contract/`, `src/`, `postman/`, `.postman/`, `gate/`, the Maven files, `quality-gate.yml` or the workflow itself); for docs, the mod or the agents' files the `quality-gate` job succeeds at once and says the gate was skipped, so it stays usable as a required check. Make the `quality-gate` job a required check to block merges.
+`.github/workflows/quality-gate.yml`: `build`, then the five gate steps in parallel (a matrix), then `quality-gate`, which aggregates, writes the job summary, posts or updates one comment on the branch's pull request, uploads the `gate-report` artifact and fails when the gate fails. It runs on every push, on pull requests and on manual dispatch, but only does the work when the branch changes something the gate judges (`src/`, `postman/`, `.postman/`, `gate/`, the Maven files, `quality-gate.yml` or the workflow itself); for docs, the mod or the agents' files the `quality-gate` job succeeds at once and says the gate was skipped, so it stays usable as a required check. Make the `quality-gate` job a required check to block merges.
 
 Secrets and variables:
 
