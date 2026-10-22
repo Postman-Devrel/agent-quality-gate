@@ -1,5 +1,10 @@
 openapi: 3.1.0
 
+x-ratelimit-policy:
+  enforced: false
+  headers: [x-ratelimit-limit, x-ratelimit-remaining, x-ratelimit-reset]
+  note: No limits are enforced by appointments-service; the headers are reserved names a fronting gateway may set.
+
 info:
   title: appointments-service
   version: 1.0.0
@@ -43,6 +48,31 @@ info:
     | `patient_id`   | `patients-service`  | `patient_snapshot`   | `patient_warn`   |
     | `provider_id`  | `providers-service` | `provider_snapshot`  | `provider_warn`  |
 
+    ### Errors: recoverable or not
+    Every error body is JSON with an `error` string. Branch on the HTTP status:
+
+    | Status | Recoverable? | What to do |
+    |--------|--------------|------------|
+    | `400`  | No, fix input | Send integer `limit` and `offset`, then resend. Retrying unchanged fails again. |
+    | `401`  | Re-authenticate | Obtain a fresh token from `auth-service` (see the `bearerAuth` scheme), resend. |
+    | `403`  | No, change credentials | Read `required` and `have` in the body, request a token with the missing scope. Retrying with the same token fails. |
+    | `404`  | No, fix input | The id does not exist. Re-list to find a valid id. Do not retry. |
+    | `500`  | Retry | Unexpected server fault. Retry idempotent calls (`GET`, `DELETE`, `cancel`, `check-in`) with backoff; do not blindly retry `POST` create, it may have created a record. |
+    | `503`  | Retry | Only `/ready`: a dependency is down. Retry with backoff. |
+
+    ### Pagination
+    The list endpoint uses offset pagination, not cursors: there is no
+    `nextCursor` field and none is ever returned. To get the next page, send the
+    same filters with `offset = previous offset + limit`. The client is done when
+    `offset + items.length >= count` (equivalently, when `items` is empty).
+    See the roundtrip example on `GET /api/appointments`.
+
+    ### Rate limiting
+    The service does not enforce rate limits today, never returns `429` and sets
+    no `X-RateLimit-*` headers (see `x-ratelimit-policy` on this document). Callers
+    should still back off on `500` and `503`. If a gateway in front of the service
+    adds limits, honour its `Retry-After` header.
+
 servers:
   - url: https://myhealthcare.dev
     description: Production
@@ -77,7 +107,18 @@ paths:
         query by `patient_id`, `provider_id` or `slot_id`. Because the set of keys
         is open-ended it cannot be enumerated here.
 
+        **Pagination.** Offset based, no cursor and no `nextCursor` field. Request
+        the first page with `offset=0`; request the next with `offset = offset +
+        limit`. Stop when `offset + items.length >= count` or `items` is empty.
+
+        Roundtrip: `GET /api/appointments?limit=2&offset=0` returns `count: 3` and
+        two items; `GET /api/appointments?limit=2&offset=2` returns the third item,
+        and 2 + 1 >= 3 so the client stops. See the `firstPage` and `lastPage`
+        response examples.
+
         Publishes: `audit.event` (`appointments.list`).
+
+        Auth: needs the `appointments.read` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: list
@@ -114,7 +155,7 @@ paths:
           example: active
       responses:
         '200':
-          description: A page of appointments.
+          description: A page of appointments. Done when `offset + items.length >= count`.
           headers:
             X-Request-ID:
               $ref: '#/components/headers/XRequestId'
@@ -122,12 +163,28 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AppointmentPage'
+              examples:
+                firstPage:
+                  summary: Request 1, limit=2 offset=0, more pages remain (no cursor, advance offset to 2)
+                  value:
+                    count: 3
+                    items:
+                      - {id: 2317, status: active, created_at: '2026-08-12T09:14:22+00:00', updated_at: '2026-08-12T09:14:22+00:00', patient_id: 77}
+                      - {id: 2318, status: active, created_at: '2026-08-12T09:20:01+00:00', updated_at: '2026-08-12T09:20:01+00:00', patient_id: 78}
+                lastPage:
+                  summary: Request 2, limit=2 offset=2, final page (2 + 1 >= 3, so stop; no next cursor)
+                  value:
+                    count: 3
+                    items:
+                      - {id: 2319, status: cancelled, created_at: '2026-08-12T09:31:40+00:00', updated_at: '2026-08-13T08:00:00+00:00', patient_id: 79}
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
     post:
       operationId: createAppointment
@@ -145,6 +202,8 @@ paths:
         `slot_id` exists, is open, or does not collide with another booking.
 
         Publishes: `appointment.booked`, `audit.event` (`appointments.create`).
+
+        Auth: needs the `appointments.write` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: create
@@ -173,6 +232,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/appointments/{record_id}:
     parameters:
@@ -187,6 +248,8 @@ paths:
         still returned, carrying their respective `status`.
 
         Publishes: `audit.event` (`appointments.read`).
+
+        Auth: needs the `appointments.read` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: get
@@ -204,6 +267,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -224,6 +289,8 @@ paths:
         > is wired as this service's generic update event. Downstream,
         > `appointment-slots-service` will reopen the slot named by `slot_id`.
         > See the warning in the API description.
+
+        Auth: needs the `appointments.write` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: update
@@ -248,6 +315,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -263,7 +332,7 @@ paths:
         Identical to `PATCH /api/appointments/{record_id}` — the same handler is
         bound to both verbs, so this performs a **shallow merge**, not a
         replacement, and emits the same `appointment.cancelled` event. Prefer
-        `PATCH`.
+        `PATCH`. Auth: needs the `appointments.write` scope (or `*`).
       tags: [Appointments]
       requestBody:
         required: false
@@ -282,6 +351,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -302,6 +373,8 @@ paths:
 
         Publishes: `appointment.cancelled`, `audit.event`
         (`appointments.deactivate`).
+
+        Auth: needs the `appointments.write` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: deactivate
@@ -319,6 +392,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '404':
           $ref: '#/components/responses/NotFound'
 
@@ -335,6 +410,8 @@ paths:
 
         Publishes: `appointment.cancelled`, `audit.event`
         (`appointment.cancel`).
+
+        Auth: needs the `appointments.write` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: cancel
@@ -355,6 +432,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '404':
           $ref: '#/components/responses/TerseNotFound'
 
@@ -370,6 +449,8 @@ paths:
         **no domain event** — only an audit record.
 
         Publishes: `audit.event` (`appointment.check_in`).
+
+        Auth: needs the `appointments.write` scope (or `*`).
       tags: [Appointments]
       x-fern-sdk-group-name: appointments
       x-fern-sdk-method-name: checkIn
@@ -390,6 +471,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '404':
           $ref: '#/components/responses/TerseNotFound'
 
@@ -409,6 +492,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: ok
+                service: appointments-service
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /ready:
     get:
@@ -434,7 +522,7 @@ paths:
                 service: appointments-service
                 problems: []
         '503':
-          description: At least one dependency check failed.
+          description: At least one dependency check failed. Recoverable, retry with backoff until `status` is `ok`.
           content:
             application/json:
               schema:
@@ -454,6 +542,13 @@ components:
       description: |
         HS256 JWT issued by `auth-service`, sent as `Authorization: Bearer <token>`.
         The token must carry `sub` and `exp` claims and a `scopes` array.
+
+        **Getting a token.** Ask the operator of `auth-service` to mint a JWT for
+        your client: there is no public token endpoint or self-service signup in
+        this API. Request the scopes you need (`appointments.read` for reads,
+        `appointments.write` for writes). For local work, set `AUTH_DISABLED=1`
+        and send no token. On `401`, obtain a new token (expired or invalid); on
+        `403`, request a token with the scope named in `required`.
 
         Required scopes, enforced per operation:
 
@@ -498,7 +593,9 @@ components:
 
   responses:
     BadRequest:
-      description: Malformed request — for the list endpoint, a non-integer `limit` or `offset`.
+      description: |
+        Malformed request, for the list endpoint a non-integer `limit` or `offset`.
+        Not recoverable by retrying: fix the input (send integers) and resend.
       content:
         application/json:
           schema:
@@ -507,7 +604,9 @@ components:
             error: offset/limit must be integers
 
     Unauthorized:
-      description: The bearer token is missing, malformed, expired, or fails signature verification.
+      description: |
+        The bearer token is missing, malformed, expired, or fails signature
+        verification. Recoverable by re-authenticating: get a fresh token, resend.
       content:
         application/json:
           schema:
@@ -523,7 +622,9 @@ components:
                 error: invalid token
 
     Forbidden:
-      description: The token is valid but lacks the scope this operation requires.
+      description: |
+        The token is valid but lacks the scope this operation requires. Not
+        recoverable by retrying: use a token that includes every scope in `required`.
       content:
         application/json:
           schema:
@@ -536,7 +637,9 @@ components:
               - appointments.read
 
     NotFound:
-      description: No appointment exists with the given id.
+      description: |
+        No appointment exists with the given id. Not recoverable by retrying: fix
+        the id (list appointments to find a valid one).
       content:
         application/json:
           schema:
@@ -546,7 +649,7 @@ components:
 
     TerseNotFound:
       description: |
-        No appointment exists with the given id. The action endpoints return the
+        No appointment exists with the given id. Fix the id, do not retry. The action endpoints return the
         terse body `{"error": "not found"}` rather than the resource-qualified
         message used by the CRUD endpoints.
       content:
@@ -555,6 +658,18 @@ components:
             $ref: '#/components/schemas/Error'
           example:
             error: not found
+
+    InternalError:
+      description: |
+        Unexpected server fault (5xx). Recoverable: retry idempotent operations
+        with exponential backoff. For `POST /api/appointments` check by listing
+        before retrying, since the record may already exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: internal error
 
   schemas:
     Appointment:
@@ -593,10 +708,12 @@ components:
           type: string
           format: date-time
           readOnly: true
+          description: Creation timestamp, set by the server.
         updated_at:
           type: string
           format: date-time
           readOnly: true
+          description: Last modification timestamp, bumped on every write.
         patient_id:
           type: integer
           format: int64
@@ -683,12 +800,15 @@ components:
         patient_id:
           type: integer
           format: int64
+          description: Foreign key into `patients-service`, merged into the record.
         provider_id:
           type: integer
           format: int64
+          description: Foreign key into `providers-service`, merged into the record.
         slot_id:
           type: integer
           format: int64
+          description: Foreign key into `appointment-slots-service`, merged without validation.
       additionalProperties: true
       example:
         starts_at: '2026-08-21T09:00:00+00:00'
@@ -696,6 +816,10 @@ components:
 
     AppointmentPage:
       type: object
+      description: |
+        One page of a list. Offset pagination, no cursor: there is no `nextCursor`.
+        Next page = same query with `offset + limit`. Done when
+        `offset + items.length >= count`.
       required:
         - count
         - items
@@ -735,8 +859,10 @@ components:
         status:
           type: string
           const: ok
+          description: Always `ok` when the process is up.
         service:
           type: string
+          description: Name of the reporting service.
           example: appointments-service
       additionalProperties: false
 
@@ -750,8 +876,10 @@ components:
         status:
           type: string
           enum: [ok, degraded]
+          description: "`ok` when every probe passes, `degraded` otherwise (HTTP 503)."
         service:
           type: string
+          description: Name of the reporting service.
           example: appointments-service
         problems:
           type: array
@@ -767,7 +895,10 @@ components:
       properties:
         error:
           type: string
-          description: Human-readable failure message.
+          description: |
+            Human-readable failure message. Pair it with the HTTP status to pick a
+            strategy: 400/404 fix input, 401 re-authenticate, 403 change scopes,
+            5xx retry with backoff. Do not parse the text.
       additionalProperties: false
 
     ScopeError:
