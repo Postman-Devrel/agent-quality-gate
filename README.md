@@ -1,4 +1,17 @@
-# agent-quality-gate
+# agent-quality-gate (Deprecated)
+
+> **Deprecated: this repository is archived and read-only. Do not open new work here.**
+>
+> - The quality gate is now the product **[Postman-Devrel/postman-agent-quality-gate](https://github.com/Postman-Devrel/postman-agent-quality-gate)**.
+> - The reference consumer is the real service **[healthcare-org-app/healthcare-appointments](https://github.com/healthcare-org-app/healthcare-appointments)** (Python, known by the Postman Context Graph), which uses the gate in CI.
+>
+> **Why:** this repo was a Java (Spring Boot) re-implementation of the `appointments-service` contract of that real service. It served as the first consumer of the gate while the gate was built. Now that the real service runs the gate itself, a Java copy of its contract has no purpose and risks drifting from the source of truth.
+
+---
+
+## History
+
+What follows describes the repo as it was. The commands are kept for reference only.
 
 An API-first Java service with a quality gate built for coding agents.
 
@@ -21,7 +34,7 @@ A code quality tool analyzes code. Nothing in that stack looks at the API *contr
 | `.claude/` | `api-coder` (implements and fixes) and the plugin settings that bring the gate loop |
 | `docs/` | architecture |
 
-## Run the service
+## Run the service (historical)
 
 Needs Java 21 or newer. The Maven wrapper downloads Maven.
 
