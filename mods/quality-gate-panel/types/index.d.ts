@@ -50,6 +50,9 @@ export type OverviewRow = {
   isCurrent: boolean
 }
 
+/** The analysis whose detail the pane shows: a branch's CI run, or the local run of the checked-out branch. */
+export type GateSelection = { branch: string; source: 'local' | 'ci'; runId: number | null }
+
 declare module 'claude-code' {
   interface PluginState {
     'quality-gate-panel': {
@@ -61,7 +64,10 @@ declare module 'claude-code' {
       note: string
       isHidden: boolean
       overview: OverviewRow[]
-      view: 'auto' | 'local' | 'ci'
+      /** null: the checked-out branch, its CI report for HEAD if any, else the local one. */
+      selected: GateSelection | null
+      /** The report of the selected CI run of another branch, read from gate-results/ci/<run>/. */
+      detail: GateReport | null
       fixOpen: boolean
       branchesOpen: boolean
     }

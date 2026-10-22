@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { Register } from 'claude-code'
 
-import type { CiRun, GateReport, OverviewRow } from '../types'
+import type { CiRun, GateReport, GateSelection, OverviewRow } from '../types'
 
 const PANE = 'quality-gate'
 const OVERVIEW_MS = 60000
@@ -18,13 +18,18 @@ const note = atom({ plugin: 'quality-gate-panel', key: 'note' } as const, '')
 // The band above the prompt is off by default: the pane is the main view. /gate-band turns it on.
 const isHidden = atom({ plugin: 'quality-gate-panel', key: 'isHidden' } as const, true)
 const overview = atom({ plugin: 'quality-gate-panel', key: 'overview' } as const, [])
-// Pane layout: which report the detail shows, and which sections are folded.
-const view = atom({ plugin: 'quality-gate-panel', key: 'view' } as const, 'auto')
+// Pane layout: which analysis the detail shows, and which sections are folded.
+const selected = atom({ plugin: 'quality-gate-panel', key: 'selected' } as const, null)
+const detail = atom({ plugin: 'quality-gate-panel', key: 'detail' } as const, null)
 const fixOpen = atom({ plugin: 'quality-gate-panel', key: 'fixOpen' } as const, true)
 const branchesOpen = atom({ plugin: 'quality-gate-panel', key: 'branchesOpen' } as const, true)
 
-/** Vibrant palette (hex, so it does not depend on the person's theme). */
-const C = { ok: '#34d399', warn: '#fbbf24', bad: '#fb7185', idle: '#64748b', accent: '#a78bfa', info: '#22d3ee', track: '#334155', ink: '#0b1020' } as const
+/**
+ * Postman palette (Aether design system), in hex so it does not depend on the person's theme: the
+ * brand orange as accent, Postman's green, yellow, red and blue for the states, mid-tone greys that
+ * read on a light and a dark background alike.
+ */
+const C = { ok: '#0CBB52', warn: '#FFB400', bad: '#EB2013', idle: '#A6A6A6', accent: '#FF6C37', info: '#097BED', track: '#6B6B6B', ink: '#212121', white: '#FFFFFF' } as const
 const COLOR = { pass: C.ok, warn: C.warn, fail: C.bad, not_available: C.idle } as const
 const SHORT: Record<string, string> = {
   'skills-check': 'skills',
@@ -273,10 +278,10 @@ const ago = (iso: string, now: number) => {
 
 const STATUS_LABEL = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', not_available: 'N/A' } as const
 
-/** A colored pill: dark text on a solid vibrant background. */
+/** A colored pill: white text on a solid background, dark ink on the yellow, as Postman draws it. */
 function pill(Text: any, label: string, color: string) {
   return (
-    <Text backgroundColor={color} color={C.ink} bold>
+    <Text backgroundColor={color} color={color === C.warn ? C.ink : C.white} bold>
       {' ' + label + ' '}
     </Text>
   )
@@ -301,75 +306,97 @@ function foldHeader(Box: any, Text: any, Button: any, key: string, open: boolean
   )
 }
 
-/** One of the two side-by-side cards: the local run or the CI run, with its verdict at a glance. */
-function runCard(Box: any, Text: any, Button: any, key: string, label: string, g: GateReport | null, empty: string, selected: boolean, pick: () => void) {
-  const color = g ? ratingColor(g) : C.idle
+/** Whether a selection names this analysis (branch and source). */
+const isPicked = (sel: GateSelection, branchName: string, source: GateSelection['source']) => sel.branch === branchName && sel.source === source
+
+/**
+ * A clickable score in the table: the pill of a rating, a marker before it when its detail is shown.
+ * Buttons take Text children, so the pill keeps its colors and the whole cell is one press.
+ */
+function scoreButton(Text: any, Button: any, key: string, label: string, color: string, picked: boolean, onPress: () => unknown) {
   return (
-    <Box borderStyle="round" borderColor={selected ? color : C.track} paddingX={1} flexDirection="column" width={52} marginRight={1}>
-      <Box>
-        <Button key={key} label={`${selected ? '◉' : '○'} ${label}`} onPress={pick} />
-        <Text>  </Text>
-        {g ? pill(Text, g.passed ? 'PASSED' : 'FAILED', color) : <Text color={C.idle}>{empty}</Text>}
-      </Box>
-      {g && (
-        <Box>
-          <Text bold color={color}>{g.rating}  </Text>
-          <Text bold>{g.score}/100  </Text>
-          {scoreBar(Text, g.score, color, 20)}
-        </Box>
-      )}
-      {g && (
-        <Text color={C.idle}>
-          {g.blockers.length} blocker{g.blockers.length === 1 ? '' : 's'} · {g.feedback.length} finding{g.feedback.length === 1 ? '' : 's'}
-          {g.sha ? ` · ${g.sha.slice(0, 7)}` : ''}
-        </Text>
-      )}
-    </Box>
+    <Button key={key} label={`${label}${picked ? ', shown' : ''}`} onPress={onPress}>
+      <Text color={C.accent} bold>{picked ? '▸' : ' '}</Text>
+      {pill(Text, label, color)}
+    </Button>
   )
 }
 
-/** Branches: a rounded card, one row each in fixed columns, the current branch highlighted, a button to ask for a branch's fix. */
-function branchesSection(rows: OverviewRow[], now: number, open: boolean, Box: any, Text: any, Button: any, $: any) {
+/**
+ * Branches: one row each in fixed columns. CI is the latest run of the branch (its score once there is
+ * a report, else its state: queued, in progress, failed, skipped), Local the report of
+ * ./gate/run-all.sh in this checkout (the checked-out branch only). A score is a button: it shows
+ * the steps and the findings of that analysis below the table.
+ */
+function branchesSection(rows: OverviewRow[], lo: GateReport | null, here: string, sel: GateSelection, now: number, open: boolean, Box: any, Text: any, Button: any, $: any) {
   const bad = rows.filter(r => r.passed === false || r.conclusion === 'failure').length
   const good = rows.filter(r => r.passed === true).length
+  // The checked-out branch has a row even before its first CI run, so its local score is reachable.
+  const all = here !== '' && !rows.some(r => r.isCurrent) ? [{ branch: here, pr: null, title: '', status: '', conclusion: '', rating: '', score: null, passed: null, blockers: 0, sha: '', runId: 0, updatedAt: '', isCurrent: true } as OverviewRow, ...rows] : rows
+  const pickCi = (row: OverviewRow) => async () => {
+    const rep = await readReport($, `gate-results/ci/${row.runId}/report.json`, 'ci', row.sha)
+    if (!rep) {
+      $.ui.toast(`No gate report downloaded yet for run ${row.runId}.`)
+      return
+    }
+    await update($, detail, () => rep)
+    await update($, selected, () => ({ branch: row.branch, source: 'ci' as const, runId: row.runId }))
+  }
+  const pickLocal = (branchName: string) => () => update($, selected, () => ({ branch: branchName, source: 'local' as const, runId: null }))
   return (
     <Box flexDirection="column">
-      {foldHeader(Box, Text, Button, 'fold-branches', open, 'BRANCHES', `${rows.length} · ${good} passing · ${bad} failing`, bad > 0 ? C.bad : C.ok, () => update($, branchesOpen, () => !open))}
+      {foldHeader(Box, Text, Button, 'fold-branches', open, 'BRANCHES', `${rows.length} · ${good} passing · ${bad} failing · click a score for its detail`, bad > 0 ? C.bad : C.ok, () => update($, branchesOpen, () => !open))}
       {open && (
         <Box borderStyle="round" borderColor={C.accent} paddingX={1} flexDirection="column" marginBottom={1}>
-          {rows.length === 0 && <Text dimColor>No gate run found yet. This needs an authenticated gh in the project.</Text>}
-          {rows.length > 0 && (
+          {all.length === 0 && <Text dimColor>No gate run found yet. This needs an authenticated gh in the project.</Text>}
+          {all.length > 0 && (
             <Box>
               {cell(Box, 2, <Text> </Text>)}
-              {cell(Box, 28, <Text color={C.info}>branch</Text>)}
-              {cell(Box, 9, <Text color={C.info}>rating</Text>)}
-              {cell(Box, 12, <Text color={C.info}>state</Text>)}
-              {cell(Box, 6, <Text color={C.info}>PR</Text>)}
-              {cell(Box, 11, <Text color={C.info}>blockers</Text>)}
-              {cell(Box, 5, <Text color={C.info}>age</Text>)}
+              {cell(Box, 26, <Text color={C.info} bold>branch</Text>)}
+              {cell(Box, 14, <Text color={C.info} bold>CI</Text>)}
+              {cell(Box, 10, <Text color={C.info} bold>Local</Text>)}
+              {cell(Box, 6, <Text color={C.info} bold>PR</Text>)}
+              {cell(Box, 11, <Text color={C.info} bold>blockers</Text>)}
+              {cell(Box, 5, <Text color={C.info} bold>age</Text>)}
             </Box>
           )}
-          {rows.map(row => {
+          {all.map(row => {
             const color = chipColor(row)
-            const state = row.status !== 'completed' ? row.status.replace('_', ' ') : row.passed === null ? row.conclusion || '?' : row.passed ? 'passed' : 'failed'
+            const state = row.status === '' ? 'no run' : row.status !== 'completed' ? row.status.replace('_', ' ') : row.passed === null ? row.conclusion || '?' : row.passed ? 'passed' : 'failed'
+            const localHere = row.isCurrent ? lo : null
             return (
               <Box>
-                {cell(Box, 2, <Text color={color}>{row.isCurrent ? '▶' : '●'}</Text>)}
-                {cell(Box, 28, <Text bold={row.isCurrent} color={row.isCurrent ? C.accent : undefined} wrap="truncate-end">{row.branch}</Text>)}
-                {cell(Box, 9, row.rating !== '' ? pill(Text, `${row.rating} ${row.score}`, color) : <Text dimColor>–</Text>)}
-                {cell(Box, 12, <Text color={color}>{state}</Text>)}
+                {cell(Box, 2, <Text color={C.accent}>{row.isCurrent ? '▶' : ' '}</Text>)}
+                {cell(Box, 26, <Text bold={row.isCurrent} color={row.isCurrent ? C.accent : undefined} wrap="truncate-end">{row.branch}</Text>)}
+                {cell(
+                  Box,
+                  14,
+                  row.rating !== ''
+                    ? scoreButton(Text, Button, `ci-${row.branch}`, `${row.rating} ${row.score}`, color, isPicked(sel, row.branch, 'ci'), pickCi(row))
+                    : <Text color={row.status === '' ? C.idle : color}>  {state}</Text>,
+                )}
+                {cell(
+                  Box,
+                  10,
+                  localHere
+                    ? scoreButton(Text, Button, `local-${row.branch}`, `${localHere.rating} ${localHere.score}`, ratingColor(localHere), isPicked(sel, row.branch, 'local'), pickLocal(row.branch))
+                    : <Text color={C.idle}>  –</Text>,
+                )}
                 {cell(Box, 6, <Text color={C.info}>{row.pr !== null ? `#${row.pr}` : ''}</Text>)}
                 {cell(Box, 11, <Text color={C.bad}>{row.blockers > 0 ? `${row.blockers} blocker${row.blockers > 1 ? 's' : ''}` : ''}</Text>)}
-                {cell(Box, 5, <Text dimColor>{ago(row.updatedAt, now)}</Text>)}
-                <Button
-                  key={`ask-${row.branch}`}
-                  label="→"
-                  onPress={() =>
-                    $.prompt.fill({
-                      text: `Show me the quality gate result of branch ${row.branch}${row.pr !== null ? ` (PR #${row.pr})` : ''} (run ${row.runId}) and, if it failed, use the api-coder agent on that branch to apply the fixes.`,
-                    })
-                  }
-                />
+                {cell(Box, 5, <Text dimColor>{row.updatedAt ? ago(row.updatedAt, now) : ''}</Text>)}
+                {row.runId !== 0 && (
+                  <Button
+                    key={`ask-${row.branch}`}
+                    label="→"
+                    dimColor
+                    onPress={() =>
+                      $.prompt.fill({
+                        text: `Show me the quality gate result of branch ${row.branch}${row.pr !== null ? ` (PR #${row.pr})` : ''} (run ${row.runId}) and, if it failed, use the api-coder agent on that branch to apply the fixes.`,
+                      })
+                    }
+                  />
+                )}
               </Box>
             )
           })}
@@ -443,7 +470,8 @@ export const register: Register = on => {
     const differs = lo && ciRep && (lo.score !== ciRep.score || lo.passed !== ciRep.passed)
     return (
       <Box>
-        <Text bold>Gate  </Text>
+        <Text backgroundColor={C.accent} color={C.white} bold>{' ◉ '}</Text>
+        <Text bold color={C.accent}> Gate  </Text>
         <Text dimColor>local </Text>
         <Text bold color={lo ? ratingColor(lo) : C.idle}>{chip(lo)}</Text>
         <Text dimColor>   CI </Text>
@@ -454,6 +482,7 @@ export const register: Register = on => {
         <Button
           key="fix"
           label="🔧"
+          variant="primary"
           onPress={() => {
             if (!r || r.feedback.length === 0) {
               $.ui.toast(r ? 'The gate has nothing to fix.' : 'No gate report yet: re-run the gate first.')
@@ -477,107 +506,125 @@ export const register: Register = on => {
     const name = await read($, branch)
     const hint = await read($, note)
     const rowsAll = await read($, overview)
-    const pick = await read($, view)
+    const picked = await read($, selected)
+    const other = await read($, detail)
     const fixIsOpen = await read($, fixOpen)
     const branchesIsOpen = await read($, branchesOpen)
     const now = await $.clock.now()
 
-    if (!auto && !lo && !ciRep) {
-      return (
-        <Box flexDirection="column" paddingX={1}>
-          <Text bold color={C.accent}>Quality gate</Text>
-          <Text dimColor>No report for {name || 'this branch'} yet. Run ./gate/run-all.sh, or push and wait for CI.</Text>
-          {hint !== '' && <Text color={C.warn}>{hint}</Text>}
-          {branchesSection(rowsAll, now, branchesIsOpen, Box, Text, Button, $)}
-        </Box>
-      )
-    }
-
-    // The detail below follows the card the person picked; "auto" is the CI report of HEAD, else the local one.
-    const r = (pick === 'local' ? lo : pick === 'ci' ? ciRep : auto) ?? auto ?? lo ?? ciRep!
-    const shownKey = r.source === 'ci' ? 'ci' : 'local'
-    const verdictColor = ratingColor(r)
-    const ciEmpty = ci && ci.isHead && ci.status !== 'completed' ? `${ci.status.replace('_', ' ')}…` : ci ? 'no report for HEAD' : 'no CI run'
+    // What the detail shows: the picked analysis; by default the checked-out branch, CI for HEAD else local.
+    const sel: GateSelection = picked ?? { branch: name, source: auto?.source ?? 'local', runId: null }
+    const r =
+      sel.source === 'local'
+        ? sel.branch === name ? lo : null
+        : sel.branch === name && sel.runId === null ? ciRep ?? auto : other
     const runLine = ci
       ? `CI run ${ci.id} · ${ci.status}${ci.conclusion ? '/' + ci.conclusion : ''}${ci.isHead ? '' : ' · older commit'}`
       : 'no CI run found'
-    const room = Math.max(3, (e.viewport?.rows ?? 30) - 34)
+    const room = Math.max(3, (e.viewport?.rows ?? 30) - 30 - rowsAll.length)
     const differs = lo && ciRep && (lo.score !== ciRep.score || lo.passed !== ciRep.passed)
+    const fixFor = r ?? auto
 
     return (
       <Box flexDirection="column" paddingX={1}>
         <Box>
-          <Text bold color={C.accent}>⬢ Quality gate  </Text>
+          <Text backgroundColor={C.accent} color={C.white} bold>{' ◉ '}</Text>
+          <Text bold color={C.accent}> Quality gate  </Text>
           <Text color={C.info}>{name}</Text>
           <Text dimColor>  · {runLine}</Text>
         </Box>
+        {differs && <Text color={C.warn}>⚠ local and CI differ on {name}: push, or re-run the gate locally</Text>}
 
-        <Box marginTop={1}>
-          {runCard(Box, Text, Button, 'pick-local', 'LOCAL', lo, 'no local run', shownKey === 'local', () => update($, view, () => 'local'))}
-          {runCard(Box, Text, Button, 'pick-ci', 'CI', ciRep, ciEmpty, shownKey === 'ci', () => update($, view, () => 'ci'))}
-        </Box>
-        {differs && <Text color={C.warn}>⚠ local and CI differ: push, or re-run the gate locally</Text>}
-
-        <Box>
-          <Button key="fix" label="🔧 fix" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
+        <Box marginTop={1} marginBottom={1}>
+          <Button
+            key="fix"
+            label="🔧 fix"
+            variant="primary"
+            onPress={() => {
+              if (!fixFor || fixFor.feedback.length === 0) {
+                $.ui.toast(fixFor ? 'The gate has nothing to fix.' : 'No gate report yet: re-run the gate first.')
+                return
+              }
+              return $.prompt.fill({ text: fixesPrompt(fixFor, r ? sel.branch : name) })
+            }}
+          />
           <Text>  </Text>
           <Button key="rerun" label="↻ re-run" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
           <Text>  </Text>
-          <Button key="auto" label="◎ auto" onPress={() => update($, view, () => 'auto')} />
+          <Button key="refresh" label="⟳ refresh" dimColor onPress={() => Promise.all([refresh($), refreshOverview($)])} />
         </Box>
 
-        {branchesSection(rowsAll, now, branchesIsOpen, Box, Text, Button, $)}
+        {branchesSection(rowsAll, lo, name, sel, now, branchesIsOpen, Box, Text, Button, $)}
 
-        <Text bold color={C.accent}>STEPS <Text dimColor>({shownKey === 'ci' ? 'CI' : 'local'})</Text></Text>
-        {card(
-          Box,
-          verdictColor,
-          r.steps.map(s => (
+        {!r && (
+          <Text dimColor>
+            {sel.source === 'local'
+              ? `No local report for ${sel.branch}. Run ./gate/run-all.sh on it.`
+              : `No report for ${sel.branch} yet. Run ./gate/run-all.sh, or push and wait for CI.`}
+          </Text>
+        )}
+
+        {r && (
+          <Box flexDirection="column">
             <Box>
-              {cell(Box, 8, pill(Text, STATUS_LABEL[s.status], COLOR[s.status]))}
-              {cell(Box, 18, <Text>{s.step}</Text>)}
-              {cell(Box, 18, scoreBar(Text, s.score, COLOR[s.status], 14))}
-              {cell(Box, 12, <Text dimColor>{s.score === null ? 'not scored' : String(s.score)}</Text>)}
+              <Text color={C.accent}>▍</Text>
+              <Text bold>DETAIL  </Text>
+              {pill(Text, r.passed ? 'PASSED' : 'FAILED', ratingColor(r))}
+              <Text bold color={ratingColor(r)}>  {r.rating} {r.score}/100  </Text>
+              <Text color={C.info}>{sel.branch}</Text>
+              <Text dimColor>  · {r.source === 'ci' ? `CI${r.sha ? ' @' + r.sha.slice(0, 7) : ''}${sel.runId ? ' · run ' + sel.runId : ''}` : 'local run'}</Text>
             </Box>
-          )),
-        )}
-
-        {r.blockers.length > 0 && (
-          <Box flexDirection="column">
-            <Text bold color={C.bad}>BLOCKERS <Text dimColor>the gate fails whatever the score</Text></Text>
-            {card(Box, C.bad, r.blockers.map(b => <Text color={C.bad}>✘ {b}</Text>))}
-          </Box>
-        )}
-
-        {r.feedback.length > 0 && (
-          <Box flexDirection="column">
-            {foldHeader(
+            {card(
               Box,
-              Text,
-              Button,
-              'fold-fix',
-              fixIsOpen,
-              'WHAT TO FIX',
-              `${r.feedback.length} finding${r.feedback.length > 1 ? 's' : ''}, blockers first`,
-              C.warn,
-              () => update($, fixOpen, () => !fixIsOpen),
+              ratingColor(r),
+              r.steps.map(s => (
+                <Box>
+                  {cell(Box, 8, pill(Text, STATUS_LABEL[s.status], COLOR[s.status]))}
+                  {cell(Box, 18, <Text>{s.step}</Text>)}
+                  {cell(Box, 18, scoreBar(Text, s.score, COLOR[s.status], 14))}
+                  {cell(Box, 12, <Text dimColor>{s.score === null ? 'not scored' : String(s.score)}</Text>)}
+                </Box>
+              )),
             )}
-            {fixIsOpen &&
-              card(
-                Box,
-                C.warn,
-                <Box flexDirection="column">
-                  {r.feedback.slice(0, room).map((f, i) => (
-                    <Box flexDirection="column" marginBottom={1}>
-                      <Text>
-                        <Text bold color={C.accent}>{i + 1}.</Text> {pill(Text, f.step, f.status === 'fail' ? C.bad : C.warn)} {f.finding}
-                      </Text>
-                      <Text color={C.info}>   → {f.fix}</Text>
-                    </Box>
-                  ))}
-                  {r.feedback.length > room && <Text dimColor>… {r.feedback.length - room} more in gate-results/report.md</Text>}
-                </Box>,
-              )}
+
+            {r.blockers.length > 0 && (
+              <Box flexDirection="column">
+                <Text bold color={C.bad}>BLOCKERS <Text dimColor>the gate fails whatever the score</Text></Text>
+                {card(Box, C.bad, r.blockers.map(b => <Text color={C.bad}>✘ {b}</Text>))}
+              </Box>
+            )}
+
+            {r.feedback.length > 0 && (
+              <Box flexDirection="column">
+                {foldHeader(
+                  Box,
+                  Text,
+                  Button,
+                  'fold-fix',
+                  fixIsOpen,
+                  'WHAT TO FIX',
+                  `${r.feedback.length} finding${r.feedback.length > 1 ? 's' : ''}, blockers first`,
+                  C.warn,
+                  () => update($, fixOpen, () => !fixIsOpen),
+                )}
+                {fixIsOpen &&
+                  card(
+                    Box,
+                    C.warn,
+                    <Box flexDirection="column">
+                      {r.feedback.slice(0, room).map((f, i) => (
+                        <Box flexDirection="column" marginBottom={1}>
+                          <Text>
+                            <Text bold color={C.accent}>{i + 1}.</Text> {pill(Text, f.step, f.status === 'fail' ? C.bad : C.warn)} {f.finding}
+                          </Text>
+                          <Text color={C.info}>   → {f.fix}</Text>
+                        </Box>
+                      ))}
+                      {r.feedback.length > room && <Text dimColor>… {r.feedback.length - room} more in gate-results/report.md</Text>}
+                    </Box>,
+                  )}
+              </Box>
+            )}
           </Box>
         )}
         {hint !== '' && <Text color={C.warn}>{hint}</Text>}
