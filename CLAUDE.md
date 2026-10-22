@@ -1,3 +1,5 @@
+> **DEPRECATED: do not work in this repository.** It is archived/read-only. It was a Java copy of the `appointments-service` contract. The gate is now the product https://github.com/Postman-Devrel/postman-agent-quality-gate and the reference consumer is the real service https://github.com/healthcare-org-app/healthcare-appointments. Make changes there, not here, and do not run the change loop below.
+
 # Working on this repo
 
 Contract-first Java API (`postman/specs/appointments-api/index.yaml`, Spring Boot in `src/`, Postman collection in `postman/`). Two CI checks: `tests` (this project's JUnit) and `quality-gate`, the [Postman agent quality gate](https://github.com/Postman-Devrel/postman-agent-quality-gate) (config `quality-gate.yml`, caller `.github/workflows/quality-gate.yml`). For Postman work, follow `AGENTS.md`.
