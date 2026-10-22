@@ -1,29 +1,15 @@
-# Quality gate configuration (read by gate/aggregate.js).
-# Keep this file flat and simple: the aggregator ships its own tiny parser,
-# so only "key: value" pairs nested by two spaces are supported.
+# Config of the Postman agent quality gate: https://github.com/Postman-Devrel/postman-agent-quality-gate
+# The spec and the collection come from .postman/resources.yaml. Everything not set here uses the gate's defaults.
 
-# Weight of each step in the composite score. Steps that are not_available
-# are left out and the remaining weights are re-normalized.
-weights:
-  skills-check: 10
-  contract-lint: 25
-  tests: 25
-  ai-readiness: 20
-  impact: 20
+# Name of this API in the Postman Context Graph (to find its consumers).
+impact:
+  api: appointments-service
 
-# Minimum score for each rating (anything below "D" is an "E").
-rating:
-  A: 90
-  B: 80
-  C: 70
-  D: 50
-
-# The gate passes at this rating or better...
+# Pass at B or better, and block whatever the score on a lint failure,
+# failing contract tests or a breaking change with a known consumer.
 pass_rating: B
 
-# ...unless a hard blocker is hit, whatever the score:
-#   lint errors, failing tests, a breaking impact on a consumer.
 blockers:
-  lint_error: true
-  failing_test: true
-  breaking_impact: true
+  contract-lint: on_fail
+  contract-tests: on_fail
+  impact: on_breaking
