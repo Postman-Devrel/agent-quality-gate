@@ -1,6 +1,6 @@
 # Working on this repo
 
-Contract-first Java API (`contract/openapi.yaml`, Spring Boot in `src/`, Postman collection in `postman/`) with a quality gate in CI (`gate/`, `.github/workflows/quality-gate.yml`). For Postman work, follow `AGENTS.md`.
+Contract-first Java API (`postman/specs/appointments-api/index.yaml`, Spring Boot in `src/`, Postman collection in `postman/`) with a quality gate in CI (`gate/`, `.github/workflows/quality-gate.yml`). For Postman work, follow `AGENTS.md`.
 
 ## The loop for any change to the contract, the code or the Postman objects
 

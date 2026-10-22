@@ -4,7 +4,7 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 /**
- * Java implementation of the appointments-service contract (contract/openapi.yaml).
+ * Java implementation of the appointments-service contract (postman/specs/appointments-api/index.yaml).
  * The contract comes from healthcare-org-app/healthcare-appointments; this code is a
  * small in-memory reimplementation, written for the quality gate demo.
  */

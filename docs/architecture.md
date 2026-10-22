@@ -37,7 +37,7 @@ flowchart TD
 
 ## Why the tests step catches what JUnit misses
 
-`gate/03-tests.sh` generates a fresh mock from the **current** `contract/openapi.yaml` (`postman mock generate`), then replays the **committed** collection against it. The collection holds what consumers expect; the contract holds what the code now promises. If they diverge, assertions fail even when the agent updated every unit test.
+`gate/03-tests.sh` generates a fresh mock from the **current** `postman/specs/appointments-api/index.yaml` (`postman mock generate`), then replays the **committed** collection against it. The collection holds what consumers expect; the contract holds what the code now promises. If they diverge, assertions fail even when the agent updated every unit test.
 
 ## Decisions
 

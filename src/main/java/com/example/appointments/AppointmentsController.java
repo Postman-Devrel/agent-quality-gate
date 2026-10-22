@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-/** One method per operation of contract/openapi.yaml. Authentication is out of scope for the demo. */
+/** One method per operation of postman/specs/appointments-api/index.yaml. Authentication is out of scope for the demo. */
 @RestController
 public class AppointmentsController {
 

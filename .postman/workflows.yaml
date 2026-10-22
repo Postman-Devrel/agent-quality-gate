@@ -1,4 +1,4 @@
 workflows:
   syncSpecToCollection:
-    - spec: ../contract/openapi.yaml
-      collection: ../postman/collections/Orders API
+    - spec: ../postman/specs/appointments-api/index.yaml
+      collection: ../postman/collections/Appointments API
