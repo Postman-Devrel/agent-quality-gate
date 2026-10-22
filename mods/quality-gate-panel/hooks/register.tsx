@@ -23,8 +23,12 @@ const view = atom({ plugin: 'quality-gate-panel', key: 'view' } as const, 'auto'
 const fixOpen = atom({ plugin: 'quality-gate-panel', key: 'fixOpen' } as const, true)
 const branchesOpen = atom({ plugin: 'quality-gate-panel', key: 'branchesOpen' } as const, true)
 
-/** Vibrant palette (hex, so it does not depend on the person's theme). */
-const C = { ok: '#34d399', warn: '#fbbf24', bad: '#fb7185', idle: '#64748b', accent: '#a78bfa', info: '#22d3ee', track: '#334155', ink: '#0b1020' } as const
+/**
+ * Postman palette (Aether design system), in hex so it does not depend on the person's theme: the
+ * brand orange as accent, Postman's green, yellow, red and blue for the states, mid-tone greys that
+ * read on a light and a dark background alike.
+ */
+const C = { ok: '#0CBB52', warn: '#FFB400', bad: '#EB2013', idle: '#A6A6A6', accent: '#FF6C37', info: '#097BED', track: '#6B6B6B', ink: '#212121', white: '#FFFFFF' } as const
 const COLOR = { pass: C.ok, warn: C.warn, fail: C.bad, not_available: C.idle } as const
 const SHORT: Record<string, string> = {
   'skills-check': 'skills',
@@ -273,10 +277,10 @@ const ago = (iso: string, now: number) => {
 
 const STATUS_LABEL = { pass: 'PASS', warn: 'WARN', fail: 'FAIL', not_available: 'N/A' } as const
 
-/** A colored pill: dark text on a solid vibrant background. */
+/** A colored pill: white text on a solid background, dark ink on the yellow, as Postman draws it. */
 function pill(Text: any, label: string, color: string) {
   return (
-    <Text backgroundColor={color} color={C.ink} bold>
+    <Text backgroundColor={color} color={color === C.warn ? C.ink : C.white} bold>
       {' ' + label + ' '}
     </Text>
   )
@@ -443,7 +447,8 @@ export const register: Register = on => {
     const differs = lo && ciRep && (lo.score !== ciRep.score || lo.passed !== ciRep.passed)
     return (
       <Box>
-        <Text bold>Gate  </Text>
+        <Text backgroundColor={C.accent} color={C.white} bold>{' ◉ '}</Text>
+        <Text bold color={C.accent}> Gate  </Text>
         <Text dimColor>local </Text>
         <Text bold color={lo ? ratingColor(lo) : C.idle}>{chip(lo)}</Text>
         <Text dimColor>   CI </Text>
@@ -454,6 +459,7 @@ export const register: Register = on => {
         <Button
           key="fix"
           label="🔧"
+          variant="primary"
           onPress={() => {
             if (!r || r.feedback.length === 0) {
               $.ui.toast(r ? 'The gate has nothing to fix.' : 'No gate report yet: re-run the gate first.')
@@ -507,7 +513,8 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" paddingX={1}>
         <Box>
-          <Text bold color={C.accent}>⬢ Quality gate  </Text>
+          <Text backgroundColor={C.accent} color={C.white} bold>{' ◉ '}</Text>
+          <Text bold color={C.accent}> Quality gate  </Text>
           <Text color={C.info}>{name}</Text>
           <Text dimColor>  · {runLine}</Text>
         </Box>
@@ -519,7 +526,7 @@ export const register: Register = on => {
         {differs && <Text color={C.warn}>⚠ local and CI differ: push, or re-run the gate locally</Text>}
 
         <Box>
-          <Button key="fix" label="🔧 fix" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
+          <Button key="fix" label="🔧 fix" variant="primary" onPress={() => $.prompt.fill({ text: fixesPrompt(r, name) })} />
           <Text>  </Text>
           <Button key="rerun" label="↻ re-run" onPress={() => $.prompt.fill({ text: 'Run ./gate/run-all.sh and summarize the gate result.' })} />
           <Text>  </Text>

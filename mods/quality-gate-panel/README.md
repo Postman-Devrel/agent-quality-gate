@@ -5,7 +5,7 @@ A Claude Code mod that shows this repo's quality gate while you work, without le
 ## What it shows
 
 - **`/gate` (and `/gate-all`)**: one wide pane, docked beside the conversation where the surface allows it. It also tries to open at session start, after a `git push` or `gh pr create`, and when the CI run of the current commit finishes (the surface decides whether there is room). Columns are fixed-width cells and the score bars are colored runs of spaces, so the layout holds in a proportional font.
-  - **Local and CI cards**: side by side, click one to pick which report the detail below follows. Rounded cards, vibrant colors.
+  - **Local and CI cards**: side by side, click one to pick which report the detail below follows. Rounded cards in the Postman palette.
   - **Collapsible sections**: BRANCHES and WHAT TO FIX fold with their `▾`/`▸` button; a `→` button per branch asks the agent about it.
   - **Branches and pull requests**: the latest finished run of the workflow per branch, with its rating, score, blockers, commit and open PR number; the current branch is marked.
   - **This branch**: the step table, the blockers and the "What to fix" findings.
@@ -13,6 +13,8 @@ A Claude Code mod that shows this repo's quality gate while you work, without le
 - **A band above the prompt** (`/gate-band`, off by default): the local score and the CI score side by side (with a warning when they differ), PR counts and four icon buttons: ↻ (re-run the gate) and 🔧 (ask for a fix) send the matching prompt to the agent at once, ⧉ opens the pane, ✕ hides the band.
 - **Toasts and a prompt suggestion** when the CI run for the checked-out commit finishes. The suggested next prompt (apply the fixes, or summarize and open a PR) is only proposed; Tab takes it.
 - **Status line**: `Gate A 93`.
+
+Colors follow the Postman palette (orange `#FF6C37` accent, Postman's green, yellow and red for pass, warn and fail), as raw hex so they read the same on a light or dark theme.
 
 ## Where the data comes from
 

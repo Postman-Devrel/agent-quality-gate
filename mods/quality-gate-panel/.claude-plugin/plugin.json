@@ -1,6 +1,6 @@
 {
   "name": "quality-gate-panel",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "description": "Shows the agent quality gate in Claude Code: a side pane with every branch and PR and the current branch detail, actions for the coding agent, toasts and prompt suggestions on CI changes.",
   "types": "./types/index.d.ts",
   "author": {
