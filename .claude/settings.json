@@ -1,10 +1,10 @@
 {
   "extraKnownMarketplaces": {
-    "agent-quality-gate": {
-      "source": { "source": "github", "repo": "Postman-Devrel/agent-quality-gate" }
+    "postman-agent-quality-gate": {
+      "source": { "source": "github", "repo": "Postman-Devrel/postman-agent-quality-gate" }
     }
   },
   "enabledPlugins": {
-    "quality-gate-panel@agent-quality-gate": true
+    "postman-agent-quality-gate@postman-agent-quality-gate": true
   }
 }
